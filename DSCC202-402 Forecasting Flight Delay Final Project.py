@@ -191,7 +191,14 @@ print(airport_code,training_start_date,training_end_date,inference_date)
 
 # COMMAND ----------
 
+#"00.Airport_Code":airport_code,"01.training_start_date":training_start_date,"02.training_end_date":training_end_date,"03.inference_date":inference_date
 # run link to the EDA notebook
-# status = dbutils.notebook.run(<PATH TO YOUR EDA NOTEBOOK>, 3600, "00.Airport_Code":airport_code,"01.training_start_date":training_start_date,"02.training_end_date":training_end_date,"03.inference_date":inference_date})
-# if status == "Success" print("Passed") else print("Failed")
+status = dbutils.notebook.run("./EDA", 3600, {})
+if status == "Success":
+   print("Passed")
+else:
+  print("Failed")
 # NOTE NOTEBOOK SHOULD RETURN dbutils.notebook.exit("Success") WHEN IT PASSES
+
+# COMMAND ----------
+
