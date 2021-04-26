@@ -1,7 +1,7 @@
 # Databricks notebook source
 ## Enter your group specific information here...
 
-GROUP='group00'   # CHANGE TO YOUR GROUP NAME
+GROUP='group02'   # CHANGE TO YOUR GROUP NAME
 
 # COMMAND ----------
 
