@@ -1,4 +1,9 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Exploratory Data Analysis
+
+# COMMAND ----------
+
 # MAGIC %run ./includes/utilities
 
 # COMMAND ----------
@@ -18,16 +23,16 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Drop Low Quality Columns
+# MAGIC ## Drop Low Quality Columns - AC
 
 # COMMAND ----------
 
-# Alex Crystal - Load Bronze Data into spark DataFrame
+# Load Bronze Data into spark DataFrame
 df = spark.sql("SELECT * FROM bronze_air_traffic")
 
 # COMMAND ----------
 
-# Alex Crystal - Print the SQL query for the next code cell
+# Print the SQL query for the next code cell
 print("SELECT")
 for c in df.columns:
   print(f"       COUNT(*)-COUNT({c}) As {c}", end='')
@@ -38,7 +43,7 @@ for c in df.columns:
 
 # COMMAND ----------
 
-# Alex Crystal - Get the number of null values in each column
+# Get the number of null values in each column
 null_val_counts = spark.sql(
 """
 SELECT
@@ -155,25 +160,20 @@ FROM bronze_air_traffic""" )
 
 # COMMAND ----------
 
-# MAGIC %md
-# MAGIC ##### Alex Crystal - Collect values and make dictionary of column names mapped to num null values.
-
-# COMMAND ----------
-
 # Collect Rows, index the first (contains null value counts), and store as dictionary
-null_val_counts_dict = null_value_counts.collect()[0].asDict()
+null_val_counts_dict = null_val_counts.collect()[0].asDict()
 null_val_counts_dict
 
 # COMMAND ----------
 
-# Alex Crystal - Create null value percentage dictionary
+# Create null value percentage dictionary
 nrows, ncols = df.count(), len(df.columns)
-null_val_pcts = {col_name:nvc/nrows for col_name, nvc in null_value_counts_dict.items()}
+null_val_pcts = {col_name:nvc/nrows for col_name, nvc in null_val_counts_dict.items()}
 print("Rows:",nrows,"\nColumns:",ncols,"\nNull Value Percentages:",null_val_pcts)
 
 # COMMAND ----------
 
-# Alex Crystal - Get names of columns we are keeping
+# Get names of columns we are keeping
 thresh = 0.20
 nullCols20 = [] # columns with > 20% null values
 to_keep = []
@@ -186,15 +186,17 @@ print("Num to drop:", len(nullCols20), "\nNum to Keep", len(to_keep), "\nCol Nam
 
 # COMMAND ----------
 
-# Alex Crystal - Drop columns above threshold of null values and write to table
+# Drop columns above threshold of null values and write to table
 df_dropNulls20 = df.select(to_keep)
-df_dropNulls20.write.saveAsTable("bronze_air_traffic_dropNulls20")
+
+from pyspark.sql.utils import AnalysisException
+try:
+  df_dropNulls20.write.saveAsTable("bronze_air_traffic_dropNulls20")
+except AnalysisException:
+  print("Table already exists")
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC /* Alex Crystal - Query table to assert that it was written successfully */
+# MAGIC /* Query table to assert that it was written successfully */
 # MAGIC SELECT * FROM bronze_air_traffic_dropNulls20
-
-# COMMAND ----------
-
