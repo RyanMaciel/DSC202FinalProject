@@ -208,10 +208,23 @@ except AnalysisException:
 
 # COMMAND ----------
 
+# MAGIC %sql
+# MAGIC USE dscc202_group02_db
+
+# COMMAND ----------
+
+# Ryan - Load data
+logicalCleanDF = spark.sql("SELECT * FROM bronze_air_traffic_dropNulls20")
+
+# COMMAND ----------
+
+# Ryan - drop columns unneeded.
+from pyspark.sql.functions import *
+
 # DEST_AIRPORT_ID, DEST_AIRPORT_SEQ_ID, DEST_CITY_MARKET_ID, DEST, DEST_CITY_NAME, DEST_STATE_ABR, DEST_STATE_FIPS,
 # DEST_STATE_NM, DEST_WAC all contain very overlapping data. I suggest we keep only DEST, as the others are redundant.
 
-logicalCleanDF = spark.sql("SELECT * FROM bronze_air_traffic_dropNulls20")
+
 logicalCleanDF.drop("DEST_AIRPORT_ID", "DEST_AIRPORT_SEQ_ID", "DEST_CITY_MARKET_ID", "DEST_CITY_NAME", "DEST_STATE_ABR", "DEST_STATE_FIPS", "DEST_STATE_NM", "DEST_WAC");
 
 # Similarly for origin:
@@ -222,22 +235,15 @@ logicalCleanDF.drop("DEP_DELAY_NEW", "ARR_DELAY_NEW");
 
 # For date data we have YEAR, QUARTER, MONTH, DAY_OF_MONTH, DAY_OF_WEEK and FL_DATE
 
-display(logicalCleanDF)
+# Create aggregations to see if there is any interesting data for DAY_OF_WEEK and DAY_OF_MONTH
+day_agg = logicalCleanDF.groupBy("DAY_OF_WEEK").agg(avg("DEP_DELAY"), avg("ARR_DELAY")).orderBy("DAY_OF_WEEK")
+month_agg = logicalCleanDF.groupBy("DAY_OF_MONTH").agg(avg("DEP_DELAY"), avg("ARR_DELAY")).orderBy("DAY_OF_MONTH")
+
+display(day_agg);
 
 
 
 # COMMAND ----------
 
-# MAGIC %md
-
-# COMMAND ----------
-
-# MAGIC %md
-# MAGIC Day of month:
-# MAGIC ![Day of month](files/shared_uploads/rmaciel2@u.rochester.edu/Unknown.png)
-# MAGIC 
-# MAGIC Day of week:
-# MAGIC ![Day of month](files/shared_uploads/rmaciel2@u.rochester.edu/Unknown_2.png)
-
-# COMMAND ----------
-
+# Ryan - Just display.
+display(month_agg)
