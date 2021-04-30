@@ -200,3 +200,44 @@ except AnalysisException:
 # MAGIC %sql
 # MAGIC /* Query table to assert that it was written successfully */
 # MAGIC SELECT * FROM bronze_air_traffic_dropNulls20
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Drop Logically Useless data
+
+# COMMAND ----------
+
+# DEST_AIRPORT_ID, DEST_AIRPORT_SEQ_ID, DEST_CITY_MARKET_ID, DEST, DEST_CITY_NAME, DEST_STATE_ABR, DEST_STATE_FIPS,
+# DEST_STATE_NM, DEST_WAC all contain very overlapping data. I suggest we keep only DEST, as the others are redundant.
+
+logicalCleanDF = spark.sql("SELECT * FROM bronze_air_traffic_dropNulls20")
+logicalCleanDF.drop("DEST_AIRPORT_ID", "DEST_AIRPORT_SEQ_ID", "DEST_CITY_MARKET_ID", "DEST_CITY_NAME", "DEST_STATE_ABR", "DEST_STATE_FIPS", "DEST_STATE_NM", "DEST_WAC");
+
+# Similarly for origin:
+logicalCleanDF.drop("ORIGIN_AIRPORT_ID", "ORIGIN_AIRPORT_SEQ_ID", "ORIGIN_CITY_MARKET_ID", "ORIGIN_CITY_NAME", "ORIGIN_STATE_ABR", "ORIGIN_STATE_FIPS", "ORIGIN_STATE_NM", "ORIGIN_WAC")
+
+# It looks like fields DEP_DELAY_NEW and ARR_DELAY_NEW min at 0, whereas the non-new ones can be negative. We probably want that negative data.
+logicalCleanDF.drop("DEP_DELAY_NEW", "ARR_DELAY_NEW");
+
+# For date data we have YEAR, QUARTER, MONTH, DAY_OF_MONTH, DAY_OF_WEEK and FL_DATE
+
+display(logicalCleanDF)
+
+
+
+# COMMAND ----------
+
+# MAGIC %md
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Day of month:
+# MAGIC ![Day of month](files/shared_uploads/rmaciel2@u.rochester.edu/Unknown.png)
+# MAGIC 
+# MAGIC Day of week:
+# MAGIC ![Day of month](files/shared_uploads/rmaciel2@u.rochester.edu/Unknown_2.png)
+
+# COMMAND ----------
+
