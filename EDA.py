@@ -182,6 +182,7 @@ for c in df.columns:
     nullCols20.append(c)
   else:
     to_keep.append(c)
+    
 print("Num to drop:", len(nullCols20), "\nNum to Keep", len(to_keep), "\nCol Names:", nullCols20)
 
 # COMMAND ----------
@@ -244,6 +245,30 @@ logicalCleanDF = logicalCleanDF.drop("FLIGHTS");
 
 #display(logicalCleanDF.select(countDistinct("DIVERTED")))
 #logicalCleanDF.groupBy('DIVERTED').count().show()
+
+
+display(logicalCleanDF);
+
+# COMMAND ----------
+
+#refining DF by dropping more columns -- Nishith
+
+#The diagram professor gave us in the main notebook says we only need to use flight number to show estimate so following fields seems irrelevant for our analysis
+logicalCleanDF = logicalCleanDF.drop("TAIL_NUM");
+logicalCleanDF = logicalCleanDF.drop("OP_UNIQUE_CARRIER");
+
+#CRS_DEP_TIME and CRS_ARR_TIME is the actual scheduled flight departure and arrival we need so renamed it to make it more understandable
+logicalCleanDF = logicalCleanDF.withColumnRenamed("CRS_DEP_TIME", "SCHEDULED_DEP_TIME")
+logicalCleanDF = logicalCleanDF.withColumnRenamed("CRS_ARR_TIME", "SCHEDULED_ARR_TIME")
+
+#these field flag if delay/arrival is or more than 15 mins. this doesn't seem necessary given we have DEP_DELAY and ARR_DELAY
+logicalCleanDF = logicalCleanDF.drop("DEP_DEL15");
+logicalCleanDF = logicalCleanDF.drop("ARR_DEL15");
+
+#I believe these fields are just grouping each row based on delay time, arrival time and flight distance. It doesn't seem relevant for our analysis
+logicalCleanDF = logicalCleanDF.drop("DEP_DELAY_GROUP");
+logicalCleanDF = logicalCleanDF.drop("ARR_DELAY_GROUP");
+logicalCleanDF = logicalCleanDF.drop("DISTANCE_GROUP");
 
 
 display(logicalCleanDF);
