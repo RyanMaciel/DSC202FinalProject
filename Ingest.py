@@ -8,12 +8,27 @@ weatherDF = spark.sql("SELECT * FROM bronze_weather LIMIT 1000")
 
 # COMMAND ----------
 
-from pyspark.sql.functions import *
-display(weatherDF.select(col("WND")))
+countDF = spark.sql("SELECT DISTINCT NAME FROM bronze_weather")
+display(countDF)
 
 # COMMAND ----------
 
+print(countDF.count())
 
+# COMMAND ----------
+
+from pyspark.sql.functions import *
+display(weatherDF)
+
+# COMMAND ----------
+
+# Ryan - Taken from the data validation demo notebook. Split up the weather data into a more parsable format.
+priorColumns = weatherDF.schema.names
+priorColumns.remove("LATITUDE")
+priorColumns.remove("LONGITUDE")
+priorColumns.remove("NAME")
+
+print(priorColumns[1])
 parsedWeatherDF =(weatherDF
         .withColumn('temp_f', split(col('TMP'),",")[0]*9/50+32)
         .withColumn('temp_qual', split(col('TMP'),",")[1])
@@ -37,7 +52,7 @@ parsedWeatherDF =(weatherDF
         .withColumn('precip_mm', col('precip_mm_intvl')/col('precip_hr_dur'))
         .withColumn("time", date_trunc('hour', "DATE"))
                  )
-
+parsedWeatherDF = parsedWeatherDF.drop(*priorColumns)
 
 # COMMAND ----------
 
