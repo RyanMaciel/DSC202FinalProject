@@ -67,3 +67,11 @@
 # MAGIC FROM dscc202_group02_db.bronze_airports_cleaned
 # MAGIC GROUP BY DAY_OF_MONTH
 # MAGIC SORT BY DAY_OF_MONTH
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT * FROM dscc202_group02_db.bronze_air_traffic_cleaned
+
+# COMMAND ----------
+

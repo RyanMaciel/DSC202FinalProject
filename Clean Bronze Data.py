@@ -306,3 +306,50 @@ try:
   airportsOfInterestDF.write.saveAsTable("dscc202_group02_db.bronze_airports_cleaned")
 except AnalysisException:
   print("Table already exists")
+
+# COMMAND ----------
+
+df = sqlContext.sql("SELECT * FROM dscc202_group02_db.bronze_airports_cleaned LIMIT 9000")
+
+# COMMAND ----------
+
+import tensorflow_data_validation as tfdv
+import pandas as pd
+import pandas_profiling
+
+displayHTML(pandas_profiling.ProfileReport(df).html)
+
+# COMMAND ----------
+
+from sklearn.model_selection import train_test_split
+import tensorflow_data_validation as tfdv
+from tensorflow_data_validation.utils.display_util import get_statistics_html
+import warnings
+
+warnings.filterwarnings("ignore", message=r"Passing", category=FutureWarning)
+
+TRAIN, TEST = train_test_split(df, test_size=0.2, random_state=42)
+EVAL, SERVE = train_test_split(TEST, test_size=0.5, random_state=42)
+
+# COMMAND ----------
+
+stats_train=tfdv.generate_statistics_from_dataframe(dataframe=TRAIN)
+stats_eval=tfdv.generate_statistics_from_dataframe(dataframe=EVAL)
+
+# COMMAND ----------
+
+displayHTML(get_statistics_html(stats_train))
+
+# COMMAND ----------
+
+schema = tfdv.infer_schema(statistics=stats_train)
+tfdv.display_schema(schema=schema)
+
+# COMMAND ----------
+
+# Compare evaluation data with training data
+displayHTML(get_statistics_html(lhs_statistics=stats_eval, rhs_statistics=stats_train,
+                          lhs_name='EVAL_DATASET', rhs_name='TRAIN_DATASET'))
+
+# COMMAND ----------
+
