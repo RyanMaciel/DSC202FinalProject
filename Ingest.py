@@ -8,7 +8,7 @@ weatherDF = spark.sql("SELECT * FROM bronze_weather")
 
 # COMMAND ----------
 
-countDF = spark.sql("SELECT DISTINCT NAME FROM bronze_weather")
+countDF = spark.sql("SELECT DISTINCT STATION FROM bronze_weather")
 display(countDF)
 
 # COMMAND ----------
@@ -60,13 +60,12 @@ parsedWeatherDF = parsedWeatherDF.drop(*priorColumns)
 
 # COMMAND ----------
 
-
-
-# COMMAND ----------
-
 display(parsedWeatherDF)
 
 # COMMAND ----------
+
+# Ryan - limit distances of weather stations from interested airports.
+import functools
 
 # Verified locations [lat, long] of all airports we are interested in.
 airportLocations = {
@@ -86,36 +85,66 @@ airportLocations = {
 }
 
 # 0.1 lat or long degrees is about 11km at equator (varies at different points N/S https://en.wikipedia.org/wiki/Decimal_degrees)
-# So lets just pay attention to weather stations within 0.1 degrees of the airport position and aggregate them.
+# So lets just pay attention to weather stations within 0.2 degrees of the airport position and aggregate them.
+distance = 0.2
+filterExpressions = []
+newColumnExpressions = None;
+for name, location in airportLocations.items():
+  
+  expression = (((col("LATITUDE") > location[0]-(distance/2))) & (col("LATITUDE") < location[0] + (distance/2)) & 
+                       (col("LONGITUDE") > location[1]-(distance/2)) & (col("LONGITUDE") < location[1] + (distance/2)))
 
-filterExpression = col("LATITUDE").isNotNull()
-for location in airportLocations.values():
-  filterExpression | ((col("LATITUDE") > location[0]-0.05) & (col("LATITUDE") < location[0] + 0.05) & 
-                       (col("LONGITUDE") > location[1]-0.05) & (col("LONGITUDE") < location[1] + 0.05))
+  if newColumnExpressions is None:
+    newColumnExpressions = when(expression, name)
+  else:
+    newColumnExpressions = newColumnExpressions.when(expression, name)
+  filterExpressions.append(expression)
+  
+
+filterExpression = functools.reduce(lambda a,b : a | b, expressions)
 localWeatherDF = parsedWeatherDF.filter(filterExpression)
+
+newColumnExpressions.otherwise("Unknown")
+localWeatherDF = localWeatherDF.withColumn("close_airport", newColumnExpressions)
 display(localWeatherDF)
 
 
 # COMMAND ----------
 
-num = localWeatherDF.select("STATION").distinct().count()
+filteredLocations = localWeatherDF.select("LATITUDE", "LONGITUDE").distinct()
 
 # COMMAND ----------
 
-print(num)
+print(filteredLocations.count())
+display(filteredLocations)
 
 # COMMAND ----------
 
-locations = parsedWeatherDF.select("LATITUDE", "LONGITUDE").distinct()
+aggDF = localWeatherDF.groupby(["close_airport", "time"]).agg(mean('temp_f').alias('avg_temp_f'),
+       sum('precip_mm').alias('tot_precip_mm'),
+       mean('wnd_mps').alias('avg_wnd_mps'),
+       mean('vis_m').alias('avg_vis_m'),
+       mean('slp_hpa').alias('avg_slp_hpa'),
+       mean('dew_pt_f').alias('avg_dewpt_f')
+       ).orderBy("time")
+display(aggDF)
 
 # COMMAND ----------
 
-import matplotlib.pyplot as plt
-display(locations)
+display(weatherDF.filter(weatherDF.NAME == "DAL FTW WSCMO AIRPORT, TX US"))
 
 # COMMAND ----------
 
-locations.count()
+# MAGIC %sql
+# MAGIC USE dscc202_group02_db
+
+# COMMAND ----------
+
+from pyspark.sql.utils import AnalysisException
+try:
+  localWeatherDF.write.saveAsTable("bronze_weather_data_ingest")
+except AnalysisException:
+  print("Table already exists")
 
 # COMMAND ----------
 
