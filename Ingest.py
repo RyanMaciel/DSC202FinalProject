@@ -4,7 +4,7 @@
 
 # COMMAND ----------
 
-weatherDF = spark.sql("SELECT * FROM bronze_weather LIMIT 1000")
+weatherDF = spark.sql("SELECT * FROM bronze_weather")
 
 # COMMAND ----------
 
@@ -19,14 +19,18 @@ print(countDF.count())
 
 from pyspark.sql.functions import *
 display(weatherDF)
+print(weatherDF.schema.names)
 
 # COMMAND ----------
 
 # Ryan - Taken from the data validation demo notebook. Split up the weather data into a more parsable format.
 priorColumns = weatherDF.schema.names
-priorColumns.remove("LATITUDE")
-priorColumns.remove("LONGITUDE")
-priorColumns.remove("NAME")
+
+# Keep these columns.
+keep = ["LATITUDE", "LONGITUDE", "NAME", "STATION"]
+for keepVal in keep:
+  if(keepVal in priorColumns):
+    priorColumns.remove(keepVal)
 
 print(priorColumns[1])
 parsedWeatherDF =(weatherDF
@@ -56,7 +60,62 @@ parsedWeatherDF = parsedWeatherDF.drop(*priorColumns)
 
 # COMMAND ----------
 
+
+
+# COMMAND ----------
+
 display(parsedWeatherDF)
+
+# COMMAND ----------
+
+# Verified locations [lat, long] of all airports we are interested in.
+airportLocations = {
+  "JFK": [40.639722, -73.778889],
+  "SEA": [47.448889, -122.309444],
+  "BOS": [42.363056,-71.006389],
+  "ATL": [33.636667,-84.428056],
+  "LAX": [33.9425,-118.408056],
+  "SFO": [37.618889,-122.375],
+  "DEN": [39.861667,-104.673056],
+  "DFW": [32.896944,-97.038056],
+  "ORD": [41.978611,-87.904722],
+  "CVG": [39.048889,-84.667778],
+  "CLT": [35.213889,-80.943056],
+  "DCA": [38.852222,-77.037778],
+  "IAH": [29.984444,-95.341389],
+}
+
+# 0.1 lat or long degrees is about 11km at equator (varies at different points N/S https://en.wikipedia.org/wiki/Decimal_degrees)
+# So lets just pay attention to weather stations within 0.1 degrees of the airport position and aggregate them.
+
+filterExpression = col("LATITUDE").isNotNull()
+for location in airportLocations.values():
+  filterExpression | ((col("LATITUDE") > location[0]-0.05) & (col("LATITUDE") < location[0] + 0.05) & 
+                       (col("LONGITUDE") > location[1]-0.05) & (col("LONGITUDE") < location[1] + 0.05))
+localWeatherDF = parsedWeatherDF.filter(filterExpression)
+display(localWeatherDF)
+
+
+# COMMAND ----------
+
+num = localWeatherDF.select("STATION").distinct().count()
+
+# COMMAND ----------
+
+print(num)
+
+# COMMAND ----------
+
+locations = parsedWeatherDF.select("LATITUDE", "LONGITUDE").distinct()
+
+# COMMAND ----------
+
+import matplotlib.pyplot as plt
+display(locations)
+
+# COMMAND ----------
+
+locations.count()
 
 # COMMAND ----------
 
