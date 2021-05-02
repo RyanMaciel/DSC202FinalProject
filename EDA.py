@@ -17,11 +17,6 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT * FROM bronze_air_traffic
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Drop Low Quality Columns - AC
 
@@ -182,6 +177,7 @@ for c in df.columns:
     nullCols20.append(c)
   else:
     to_keep.append(c)
+    
 print("Num to drop:", len(nullCols20), "\nNum to Keep", len(to_keep), "\nCol Names:", nullCols20)
 
 # COMMAND ----------
@@ -191,7 +187,7 @@ df_dropNulls20 = df.select(to_keep)
 
 from pyspark.sql.utils import AnalysisException
 try:
-  df_dropNulls20.write.saveAsTable("bronze_air_traffic_dropNulls20")
+  df_dropNulls20.write.saveAsTable("dscc202_group02_db.bronze_air_traffic_dropNulls20")
 except AnalysisException:
   print("Table already exists")
 
@@ -199,4 +195,146 @@ except AnalysisException:
 
 # MAGIC %sql
 # MAGIC /* Query table to assert that it was written successfully */
-# MAGIC SELECT * FROM bronze_air_traffic_dropNulls20
+# MAGIC SELECT * FROM dscc202_group02_db.bronze_air_traffic_dropNulls20 LIMIT 10
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Drop Logically Useless data
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC USE dscc202_group02_db
+
+# COMMAND ----------
+
+# Ryan - Load data
+logicalCleanDF = spark.sql("SELECT * FROM bronze_air_traffic_dropNulls20")
+
+# COMMAND ----------
+
+# Ryan - drop columns unneeded.
+from pyspark.sql.functions import *
+
+# DEST_AIRPORT_ID, DEST_AIRPORT_SEQ_ID, DEST_CITY_MARKET_ID, DEST, DEST_CITY_NAME, DEST_STATE_ABR, DEST_STATE_FIPS,
+# DEST_STATE_NM, DEST_WAC all contain very overlapping data. I suggest we keep only DEST, as the others are redundant.
+
+
+logicalCleanDF = logicalCleanDF.drop("DEST_AIRPORT_ID", "DEST_AIRPORT_SEQ_ID", "DEST_CITY_MARKET_ID", "DEST_CITY_NAME", "DEST_STATE_ABR", "DEST_STATE_FIPS", "DEST_STATE_NM", "DEST_WAC");
+
+# Similarly for origin:
+logicalCleanDF = logicalCleanDF.drop("ORIGIN_AIRPORT_ID", "ORIGIN_AIRPORT_SEQ_ID", "ORIGIN_CITY_MARKET_ID", "ORIGIN_CITY_NAME", "ORIGIN_STATE_ABR", "ORIGIN_STATE_FIPS", "ORIGIN_STATE_NM", "ORIGIN_WAC")
+
+# It looks like fields DEP_DELAY_NEW and ARR_DELAY_NEW min at 0, whereas the non-new ones can be negative. We probably want that negative data.
+logicalCleanDF = logicalCleanDF.drop("DEP_DELAY_NEW", "ARR_DELAY_NEW");
+
+#If we are keeping month, drop quarter
+logicalCleanDF = logicalCleanDF.drop("QUARTER", "ARR_DELAY_NEW");
+
+#OP_UNIQUE_CARRIER, OP_CARRIER_AIRLINE_ID, OP_CARRIER are all very similar only keep one. I think OP_UNIQUE_CARRIER is the best choice
+logicalCleanDF = logicalCleanDF.drop("OP_CARRIER_AIRLINE_ID", "OP_CARRIER");
+
+#Flights is 1 for every row.
+logicalCleanDF = logicalCleanDF.drop("FLIGHTS");
+
+#display(logicalCleanDF.select(countDistinct("DIVERTED")))
+#logicalCleanDF.groupBy('DIVERTED').count().show()
+
+
+display(logicalCleanDF);
+
+# COMMAND ----------
+
+#refining DF by dropping more columns -- Nishith
+
+#The diagram professor gave us in the main notebook says we only need to use flight number to show estimate so following fields seems irrelevant for our analysis
+logicalCleanDF = logicalCleanDF.drop("TAIL_NUM");
+logicalCleanDF = logicalCleanDF.drop("OP_UNIQUE_CARRIER");
+
+#CRS_DEP_TIME and CRS_ARR_TIME is the actual scheduled flight departure and arrival we need so renamed it to make it more understandable
+logicalCleanDF = logicalCleanDF.withColumnRenamed("CRS_DEP_TIME", "SCHEDULED_DEP_TIME")
+logicalCleanDF = logicalCleanDF.withColumnRenamed("CRS_ARR_TIME", "SCHEDULED_ARR_TIME")
+
+#these field flag if delay/arrival is or more than 15 mins. this doesn't seem necessary given we have DEP_DELAY and ARR_DELAY
+logicalCleanDF = logicalCleanDF.drop("DEP_DEL15");
+logicalCleanDF = logicalCleanDF.drop("ARR_DEL15");
+
+#I believe these fields are just grouping each row based on delay time, arrival time and flight distance. It doesn't seem relevant for our analysis
+logicalCleanDF = logicalCleanDF.drop("DEP_DELAY_GROUP");
+logicalCleanDF = logicalCleanDF.drop("ARR_DELAY_GROUP");
+logicalCleanDF = logicalCleanDF.drop("DISTANCE_GROUP");
+
+
+display(logicalCleanDF);
+
+# COMMAND ----------
+
+# For date data we have YEAR, QUARTER, MONTH, DAY_OF_MONTH, DAY_OF_WEEK and FL_DATE
+
+
+# Create aggregations to see if there is any interesting data for DAY_OF_WEEK and DAY_OF_MONTH
+day_agg = logicalCleanDF.groupBy("DAY_OF_WEEK").agg(avg("DEP_DELAY"), avg("ARR_DELAY")).orderBy("DAY_OF_WEEK")
+month_agg = logicalCleanDF.groupBy("DAY_OF_MONTH").agg(avg("DEP_DELAY"), avg("ARR_DELAY")).orderBy("DAY_OF_MONTH")
+
+display(day_agg);
+
+
+
+# COMMAND ----------
+
+# Ryan - Just display.
+display(month_agg)
+
+# COMMAND ----------
+
+print("Shape = ", (logicalCleanDF.count(), len(logicalCleanDF.columns)))
+
+# COMMAND ----------
+
+from pyspark.sql.utils import AnalysisException
+try:
+  logicalCleanDF.write.saveAsTable("dscc202_group02_db.bronze_air_traffic_cleaned")
+except AnalysisException:
+  print("Table already exists")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## EDA for presentation
+# MAGIC * Arrival/Departure Delay Frequency
+# MAGIC * Average Arrival/Departure Delay per Month
+# MAGIC * Average Arrival/Departure Delay per Airport 
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT COUNT(*) AS FREQUENCY, ARR_DELAY
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
+# MAGIC GROUP BY ARR_DELAY
+# MAGIC SORT BY ARR_DELAY
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT COUNT(*) AS FREQUENCY, DEP_DELAY
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
+# MAGIC GROUP BY DEP_DELAY
+# MAGIC SORT BY DEP_DELAY
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, MONTH
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
+# MAGIC GROUP BY MONTH
+# MAGIC SORT BY MONTH
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, ORIGIN
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
+# MAGIC WHERE ORIGIN IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
+# MAGIC GROUP BY ORIGIN
+# MAGIC SORT BY ORIGIN
