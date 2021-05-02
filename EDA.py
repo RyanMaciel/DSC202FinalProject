@@ -195,7 +195,9 @@ except AnalysisException:
 
 # MAGIC %sql
 # MAGIC /* Query table to assert that it was written successfully */
+
 # MAGIC SELECT * FROM dscc202_group02_db.bronze_air_traffic_dropNulls20 LIMIT 10
+
 
 # COMMAND ----------
 
@@ -287,6 +289,7 @@ display(day_agg);
 display(month_agg)
 
 # COMMAND ----------
+
 
 print("Shape = ", (logicalCleanDF.count(), len(logicalCleanDF.columns)))
 
