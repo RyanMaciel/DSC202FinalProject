@@ -38,11 +38,11 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, MONTH
-# MAGIC FROM dscc202_group02_db.bronze_airports_cleaned
-# MAGIC GROUP BY MONTH
-# MAGIC SORT BY MONTH
+'''%sql
+SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, MONTH
+FROM dscc202_group02_db.bronze_airports_cleaned
+GROUP BY MONTH
+SORT BY MONTH'''
 
 # COMMAND ----------
 
@@ -62,8 +62,42 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, DAY_OF_MONTH
-# MAGIC FROM dscc202_group02_db.bronze_airports_cleaned
-# MAGIC GROUP BY DAY_OF_MONTH
-# MAGIC SORT BY DAY_OF_MONTH
+'''%sql
+SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, DAY_OF_MONTH
+FROM dscc202_group02_db.bronze_airports_cleaned
+GROUP BY DAY_OF_MONTH
+SORT BY DAY_OF_MONTH'''
+
+# COMMAND ----------
+
+df = spark.sql("SELECT * FROM dscc202_group02_db.bronze_airports_cleaned")
+
+# COMMAND ----------
+
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+
+# COMMAND ----------
+
+df_pd = df.toPandas()
+df_pd.shape
+
+# COMMAND ----------
+
+# Drop non-numeric columns (which is why the plot is smaller than 20x20)
+corr = df_pd.corr()
+ax = sns.heatmap(
+    corr, 
+    vmin=-1, vmax=1, center=0,
+    cmap=sns.diverging_palette(20, 120, n=100),
+    square=True
+)
+ax.set_xticklabels(
+    ax.get_xticklabels(),
+    rotation=45,
+    horizontalalignment='right'
+);
+
+# COMMAND ----------
+

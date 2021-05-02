@@ -20,7 +20,7 @@
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## Drop Low Quality Columns - AC
+# MAGIC ## Drop Low Quality Columns
 
 # COMMAND ----------
 
@@ -187,17 +187,20 @@ print("Num to drop:", len(nullCols20), "\nNum to Keep", len(to_keep), "\nCol Nam
 # Drop columns above threshold of null values and write to table
 df_dropNulls20 = df.select(to_keep)
 
+'''
 from pyspark.sql.utils import AnalysisException
 try:
   df_dropNulls20.write.saveAsTable("dscc202_group02_db.bronze_air_traffic_dropNulls20")
 except AnalysisException:
-  print("Table already exists")
+  print("Table already exists")'''
+
+# Overwrite table
+df_dropNulls20.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_air_traffic_dropNulls20")
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC /* Query table to assert that it was written successfully */
-# MAGIC 
 # MAGIC SELECT * FROM dscc202_group02_db.bronze_air_traffic_dropNulls20 LIMIT 10
 
 # COMMAND ----------
@@ -273,11 +276,16 @@ display(logicalCleanDF);
 
 # COMMAND ----------
 
+'''
+# Write cleaned dataframe to table and handle exception if table already exists
 from pyspark.sql.utils import AnalysisException
 try:
   logicalCleanDF.write.saveAsTable("dscc202_group02_db.bronze_air_traffic_cleaned")
 except AnalysisException:
-  print("Table already exists")
+  print("Table already exists")'''
+
+# Overwrite table
+logicalCleanDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_airports_cleaned")
 
 # COMMAND ----------
 
@@ -294,15 +302,39 @@ FROM dscc202_group02_db.bronze_air_traffic_cleaned
 WHERE ORIGIN IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
 OR DEST IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
 """)
-
-# COMMAND ----------
-
 print((airportsOfInterestDF.count(), len(airportsOfInterestDF.columns)))
 
 # COMMAND ----------
 
+airportsOfInterestDF = airportsOfInterestDF \
+                        .withColumn('FLY_Date',to_timestamp(airportsOfInterestDF.FL_DATE)) \
+                        .withColumn('SCHEDULED_DEPART_TIME',to_timestamp(airportsOfInterestDF.SCHEDULED_DEP_TIME)) \
+                        .withColumn('SCHEDULED_ARRIVAL_TIME',to_timestamp(airportsOfInterestDF.SCHEDULED_ARR_TIME)) \
+                        .drop("YEAR", "MONTH", "DAY_OF_MONTH", "FL_DATE", "SCHEDULED_DEP_TIME", "DEP_TIME", 
+                              "DEP_TIME_BLK", "SCHEDULED_ARR_TIME", "ARR_TIME", "ARR_TIME_BLK")
+print((airportsOfInterestDF.count(), len(airportsOfInterestDF.columns)))
+
+# COMMAND ----------
+
+airportsOfInterestDF.printSchema()
+
+# COMMAND ----------
+
+airportsOfInterestDF = airportsOfInterestDF.na.drop('any')
+print((airportsOfInterestDF.count(), len(airportsOfInterestDF.columns)))
+
+# COMMAND ----------
+
+# Overwrite table
 from pyspark.sql.utils import AnalysisException
 try:
-  airportsOfInterestDF.write.saveAsTable("dscc202_group02_db.bronze_airports_cleaned")
+  airportsOfInterestDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_airports_cleaned")
 except AnalysisException:
-  print("Table already exists")
+  print("Dropping and updating table.")
+  spark.sql("DROP TABLE dscc202_group02_db.bronze_airports_cleaned")
+  airportsOfInterestDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_airports_cleaned")
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT * FROM dscc202_group02_db.bronze_airports_cleaned
