@@ -17,11 +17,6 @@
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC SELECT * FROM bronze_air_traffic
-
-# COMMAND ----------
-
 # MAGIC %md
 # MAGIC ## Drop Low Quality Columns - AC
 
@@ -192,7 +187,7 @@ df_dropNulls20 = df.select(to_keep)
 
 from pyspark.sql.utils import AnalysisException
 try:
-  df_dropNulls20.write.saveAsTable("bronze_air_traffic_dropNulls20")
+  df_dropNulls20.write.saveAsTable("dscc202_group02_db.bronze_air_traffic_dropNulls20")
 except AnalysisException:
   print("Table already exists")
 
@@ -200,7 +195,9 @@ except AnalysisException:
 
 # MAGIC %sql
 # MAGIC /* Query table to assert that it was written successfully */
-# MAGIC SELECT * FROM bronze_air_traffic_dropNulls20
+
+# MAGIC SELECT * FROM dscc202_group02_db.bronze_air_traffic_dropNulls20 LIMIT 10
+
 
 # COMMAND ----------
 
@@ -293,3 +290,54 @@ display(month_agg)
 
 # COMMAND ----------
 
+
+print("Shape = ", (logicalCleanDF.count(), len(logicalCleanDF.columns)))
+
+# COMMAND ----------
+
+from pyspark.sql.utils import AnalysisException
+try:
+  logicalCleanDF.write.saveAsTable("dscc202_group02_db.bronze_air_traffic_cleaned")
+except AnalysisException:
+  print("Table already exists")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## EDA for presentation
+# MAGIC * Arrival/Departure Delay Frequency
+# MAGIC * Average Arrival/Departure Delay per Month
+# MAGIC * Average Arrival/Departure Delay per Airport 
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT COUNT(*) AS FREQUENCY, ARR_DELAY
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
+# MAGIC GROUP BY ARR_DELAY
+# MAGIC SORT BY ARR_DELAY
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT COUNT(*) AS FREQUENCY, DEP_DELAY
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
+# MAGIC GROUP BY DEP_DELAY
+# MAGIC SORT BY DEP_DELAY
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, MONTH
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
+# MAGIC GROUP BY MONTH
+# MAGIC SORT BY MONTH
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, ORIGIN
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
+# MAGIC WHERE ORIGIN IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
+# MAGIC GROUP BY ORIGIN
+# MAGIC SORT BY ORIGIN
