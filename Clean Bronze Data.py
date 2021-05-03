@@ -19,6 +19,11 @@
 
 # COMMAND ----------
 
+from pyspark.sql.utils import AnalysisException
+from pyspark.sql.functions import *
+
+# COMMAND ----------
+
 # MAGIC %md
 # MAGIC ## Drop Low Quality Columns
 
@@ -187,15 +192,17 @@ print("Num to drop:", len(nullCols20), "\nNum to Keep", len(to_keep), "\nCol Nam
 # Drop columns above threshold of null values and write to table
 df_dropNulls20 = df.select(to_keep)
 
-'''
-from pyspark.sql.utils import AnalysisException
-try:
-  df_dropNulls20.write.saveAsTable("dscc202_group02_db.bronze_air_traffic_dropNulls20")
-except AnalysisException:
-  print("Table already exists")'''
+
+# COMMAND ----------
 
 # Overwrite table
-df_dropNulls20.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_air_traffic_dropNulls20")
+try:
+  df_dropNulls20.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_air_traffic_dropNulls20")
+except:
+  print("Dropping and updating table.")
+  path = "dbfs:/user/hive/warehouse/dscc202_group02/bronze_air_traffic_dropNulls20"
+  dbutils.fs.rm(path, recurse=True)
+  df_dropNulls20.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_air_traffic_dropNulls20")
 
 # COMMAND ----------
 
@@ -221,7 +228,6 @@ logicalCleanDF = spark.sql("SELECT * FROM bronze_air_traffic_dropNulls20")
 # COMMAND ----------
 
 # Ryan - drop columns unneeded.
-from pyspark.sql.functions import *
 
 # DEST_AIRPORT_ID, DEST_AIRPORT_SEQ_ID, DEST_CITY_MARKET_ID, DEST, DEST_CITY_NAME, DEST_STATE_ABR, DEST_STATE_FIPS,
 # DEST_STATE_NM, DEST_WAC all contain very overlapping data. I suggest we keep only DEST, as the others are redundant.
@@ -247,8 +253,7 @@ logicalCleanDF = logicalCleanDF.drop("FLIGHTS");
 #display(logicalCleanDF.select(countDistinct("DIVERTED")))
 #logicalCleanDF.groupBy('DIVERTED').count().show()
 
-
-display(logicalCleanDF);
+display(logicalCleanDF)
 
 # COMMAND ----------
 
@@ -276,16 +281,18 @@ display(logicalCleanDF);
 
 # COMMAND ----------
 
-'''
-# Write cleaned dataframe to table and handle exception if table already exists
-from pyspark.sql.utils import AnalysisException
-try:
-  logicalCleanDF.write.saveAsTable("dscc202_group02_db.bronze_air_traffic_cleaned")
-except AnalysisException:
-  print("Table already exists")'''
-
 # Overwrite table
-logicalCleanDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_airports_cleaned")
+try:
+  logicalCleanDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_air_traffic_cleaned")
+except:
+  directory = "dbfs:/user/hive/warehouse/dscc202_group02_db.db"
+  path = directory + "/bronze_air_traffic_cleaned/"
+  print(f"Dropping and updating table at {path}")
+  display(dbutils.fs.ls(directory))
+  dbutils.fs.rm(path, recurse=True)
+  display(dbutils.fs.ls(directory))
+  logicalCleanDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_air_traffic_cleaned")
+  display(dbutils.fs.ls(directory))
 
 # COMMAND ----------
 
@@ -293,6 +300,11 @@ logicalCleanDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_ai
 # MAGIC SELECT * 
 # MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
 # MAGIC LIMIT 10
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Cast Time columns to TimestampType
 
 # COMMAND ----------
 
@@ -306,35 +318,62 @@ print((airportsOfInterestDF.count(), len(airportsOfInterestDF.columns)))
 
 # COMMAND ----------
 
-airportsOfInterestDF = airportsOfInterestDF \
-                        .withColumn('FLY_Date',to_timestamp(airportsOfInterestDF.FL_DATE)) \
-                        .withColumn('SCHEDULED_DEPART_TIME',to_timestamp(airportsOfInterestDF.SCHEDULED_DEP_TIME)) \
-                        .withColumn('SCHEDULED_ARRIVAL_TIME',to_timestamp(airportsOfInterestDF.SCHEDULED_ARR_TIME)) \
-                        .drop("YEAR", "MONTH", "DAY_OF_MONTH", "FL_DATE", "SCHEDULED_DEP_TIME", "DEP_TIME", 
-                              "DEP_TIME_BLK", "SCHEDULED_ARR_TIME", "ARR_TIME", "ARR_TIME_BLK")
-print((airportsOfInterestDF.count(), len(airportsOfInterestDF.columns)))
+airportsOfInterestDF = ( airportsOfInterestDF
+                        # SCHEDULED_DEP_TIME concatenated with FL_DATE casted to TimestampType
+                        .withColumn('SCHEDULED_DEP_TIME', to_timestamp(concat(airportsOfInterestDF.FL_DATE.cast('string'),
+                                                                               lit(' '),
+                                                                               lpad(airportsOfInterestDF.SCHEDULED_DEP_TIME.cast('string'), 4, '0')), 'yyyy-MM-dd HHmm'))
+                        # SCHEDULE_ARR_TIME concatenated with FL_DATE casted to TimestampType
+                        .withColumn('SCHEDULED_ARR_TIME', to_timestamp(concat(airportsOfInterestDF.FL_DATE.cast('string'),
+                                                                               lit(' '),
+                                                                               lpad(airportsOfInterestDF.SCHEDULED_ARR_TIME.cast('string'), 4, '0')), 'yyyy-MM-dd HHmm'))
+                        # WHEELS_OFF concatenated with FL_DATE casted to TimestampType
+                        .withColumn('WHEELS_OFF', to_timestamp(concat(airportsOfInterestDF.FL_DATE.cast('string'),
+                                                                       lit(' '),
+                                                                       lpad(airportsOfInterestDF.WHEELS_OFF.cast('string'), 4, '0')), 'yyyy-MM-dd HHmm'))
+                        # WHEELS_ON concatenated with FL_DATE casted to TimestampType
+                        .withColumn('WHEELS_ON', to_timestamp(concat(airportsOfInterestDF.FL_DATE.cast('string'),
+                                                                       lit(' '),
+                                                                       lpad(airportsOfInterestDF.WHEELS_ON.cast('string'), 4, '0')), 'yyyy-MM-dd HHmm'))
+                        # Dropping Redundant Columns
+                        .drop("YEAR", "MONTH", "DAY_OF_MONTH", "FL_DATE", "DEP_TIME", "DEP_TIME_BLK", "ARR_TIME", "ARR_TIME_BLK") ).na.drop()
 
-# COMMAND ----------
-
-airportsOfInterestDF.printSchema()
-
-# COMMAND ----------
-
-airportsOfInterestDF = airportsOfInterestDF.na.drop('any')
-print((airportsOfInterestDF.count(), len(airportsOfInterestDF.columns)))
-
-# COMMAND ----------
-
-# Overwrite table
-from pyspark.sql.utils import AnalysisException
-try:
-  airportsOfInterestDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_airports_cleaned")
-except AnalysisException:
-  print("Dropping and updating table.")
-  spark.sql("DROP TABLE dscc202_group02_db.bronze_airports_cleaned")
-  airportsOfInterestDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_airports_cleaned")
+display(airportsOfInterestDF)
 
 # COMMAND ----------
 
 # MAGIC %sql
-# MAGIC SELECT * FROM dscc202_group02_db.bronze_airports_cleaned
+# MAGIC DESCRIBE DATABASE dscc202_group02_db
+
+# COMMAND ----------
+
+# Overwrite table
+try:
+  airportsOfInterestDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_air_traffic_cleaned")
+except:
+  directory = "dbfs:/user/hive/warehouse/dscc202_group02_db.db"
+  path = directory + "/bronze_air_traffic_cleaned/"
+  print(f"Dropping and updating table at {path}")
+  display(dbutils.fs.ls(directory))
+  dbutils.fs.rm(path, recurse=True)
+  display(dbutils.fs.ls(directory))
+  airportsOfInterestDF.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_air_traffic_cleaned")
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT * 
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned
+# MAGIC LIMIT 10
+
+# COMMAND ----------
+
+# MAGIC %sql
+# MAGIC SELECT * 
+# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned 
+# MAGIC WHERE WHEELS_OFF IS NOT NULL AND WHEELS_OFF < WHEELS_ON
+# MAGIC LIMIT 10
