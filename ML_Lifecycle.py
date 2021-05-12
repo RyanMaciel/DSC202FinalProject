@@ -17,6 +17,11 @@
 
 # COMMAND ----------
 
+# MAGIC %md
+# MAGIC # Assemble Prediction Pipeline and Fit Model
+
+# COMMAND ----------
+
 df = spark.sql("""
 SELECT * 
 FROM bronze_air_traffic_cleaned_v3 
@@ -28,146 +33,123 @@ display(df)
 
 # COMMAND ----------
 
-strings_used = ["ORIGIN", "DEST", 'DAY_OF_WEEK']
-
-# COMMAND ----------
-
-from pyspark.ml import Pipeline
-from pyspark.ml.feature import OneHotEncoder, StringIndexer
-
-stage_string = [StringIndexer(inputCol= c, outputCol= c+"_string_encoded") for c in strings_used]
-# stage_one_hot = [OneHotEncoder(inputCol= c+"_string_encoded", outputCol= c+ "_one_hot") for c in strings_used]
-
-# ppl = Pipeline(stages= stage_string + stage_one_hot)
-ppl = Pipeline(stages= stage_string)
-df = ppl.fit(df).transform(df)
-
-# COMMAND ----------
-
-df = df.drop("ORIGIN", "DEST", "DAY_OF_WEEK")
-
-# COMMAND ----------
-
-display(df)
-
-# COMMAND ----------
-
-df.columns
-
-# COMMAND ----------
-
 # MAGIC %md
-# MAGIC # 2. Model Selection and Training
+# MAGIC # 1. Create Prediction Pipeline
 
 # COMMAND ----------
 
-import mlflow
-import mlflow.sklearn
-from mlflow.tracking import MlflowClient
-from mlflow.models.signature import infer_signature
-from pyspark.ml.regression import RandomForestRegressor
-from pyspark.ml.regression import LinearRegression
-from pyspark.ml.feature import StringIndexer, VectorAssembler, VectorIndexer
-from pyspark.ml.evaluation import RegressionEvaluator
 from pyspark.ml import Pipeline
-from sklearn.metrics import mean_squared_error
+from pyspark.ml.feature import StringIndexer, VectorAssembler
+from pyspark.ml.regression import RandomForestRegressor
+from pyspark.ml.evaluation import RegressionEvaluator
 
-# COMMAND ----------
+(trainDF, testDF) = df.randomSplit([0.8,0.2], seed=42)
 
-# https://www.silect.is/blog/random-forest-models-in-spark-ml/
 feature_list = []
 for col in df.columns:
     if col == 'ARR_DELAY' or col in ['SCHEDULED_DEP_TIME', 'SCHEDULED_ARR_TIME', 'WHEELS_OFF', 'WHEELS_ON']:
         continue
     else:
         feature_list.append(col)
-assembler = VectorAssembler(inputCols=feature_list, outputCol="features")
+        
+categoricalCols = [field for (field, dType) in trainDF.dtypes if dType=="string"]
+indexOutputCols = [x + "Index" for x in categoricalCols]
+stringIndexer = StringIndexer(inputCols=categoricalCols,
+                              outputCols=indexOutputCols, 
+                              handleInvalid="skip")
+numericCols = [field for (field, dType) in trainDF.dtypes if (dType=="double" and \
+                                                              field not in ['SCHEDULED_DEP_TIME', 'SCHEDULED_ARR_TIME', 'WHEELS_OFF', 'WHEELS_ON'] and \
+                                                              field != 'ARR_DELAY')]
+assemblerInputs = indexOutputCols + numericCols
+vecAssembler = VectorAssembler(inputCols=assemblerInputs,
+                              outputCol="features")
+
+
+rf = RandomForestRegressor(labelCol="ARR_DELAY", maxDepth=maxDepth, numTrees=numTrees, seed=42)
+pipeline = Pipeline(stages=[stringIndexer, vecAssembler, rf])
 
 # COMMAND ----------
 
-df_assembled = assembler.transform(df)
-df_assembled = df_assembled.drop("SCHEDULED_DEP_TIME", "SCHEDULED_ARR_TIME", "WHEELS_OFF", "WHEELS_ON")
-for feature in feature_list:
-  df_assembled = df_assembled.drop(feature)
+# MAGIC %md
+# MAGIC # 2. Begin Run, Train Model
 
 # COMMAND ----------
 
-print(feature_list)
+import mlflow
+import mlflow.spark
+import pandas as pd
+
+with mlflow.start_run(run_name="random-forest") as run:
+  # Log params: Num Trees and Max Depth
+  mlflow.log_param("num_trees", rf.getNumTrees())
+  mlflow.log_param("max_depth", rf.getMaxDepth())
+ 
+  # Log model
+  pipelineModel = pipeline.fit(trainDF)
+  mlflow.spark.log_model(pipelineModel, "model")
+
+  # Log metrics: RMSE and R2
+  predDF = pipelineModel.transform(testDF)
+  regressionEvaluator = RegressionEvaluator(predictionCol="prediction", 
+                                            labelCol="ARR_DELAY")
+  rmse = regressionEvaluator.setMetricName("rmse").evaluate(predDF)
+  r2 = regressionEvaluator.setMetricName("r2").evaluate(predDF)
+  mlflow.log_metrics({"rmse": rmse, "r2": r2})
+
+  # Log artifact: Feature Importance Scores
+  rfModel = pipelineModel.stages[-1]
+  pandasDF = (pd.DataFrame(list(zip(vecAssembler.getInputCols(), 
+                                    rfModel.featureImportances)), 
+                          columns=["feature", "importance"])
+              .sort_values(by="importance", ascending=False))
+  # First write to local filesystem, then tell MLflow where to find that file
+  pandasDF.to_csv("feature-importance.csv", index=False)
+  mlflow.log_artifact("feature-importance.csv")
+
 
 # COMMAND ----------
 
-df_assembled.show(5)
+display(predDF.select(['ARR_DELAY', 'prediction']))
 
 # COMMAND ----------
 
-(trainingData, testData) = df_assembled.randomSplit([0.8, 0.2])
+# MAGIC %md
+# MAGIC # 3. Register and Track Model
 
 # COMMAND ----------
 
-# testing without ML Flow
+import uuid
 
-rf = RandomForestRegressor(featuresCol = "features", labelCol = "ARR_DELAY", maxDepth = maxDepth)
-#   pipeline = Pipeline(stages=[assembler, rf])
-  # Train model and predict labels
-model = rf.fit(trainingData)
-predictions = model.transform(testData)
-  
-#   Logging the model
-#   mlflow.sklearn.log_model(rf,
-#                            artifact_path="rf_regression_model")
-#   Logging metrics
-evaluator = RegressionEvaluator(labelCol="ARR_DELAY", predictionCol="features", metricName="rmse")
-rmse = evaluator.evaluate(predictions)
-#   mlfow.log_metric("rmse",rmse)
-print(rmse)
+runID = runs[0].info.run_uuid
+model_name = f"flight_delay_{uuid.uuid4().hex[:10]}"
+model_uri = "runs:/{run_id}/model".format(run_id=runID)
+
+model_details = mlflow.register_model(model_uri=model_uri, name=model_name)
+model_details
 
 # COMMAND ----------
 
-with mlflow.start_run(run_name="Flight_Predictions_RF_regressor") as run:
-  # Initialize model
-  maxDepth = 4
-  rf = RandomForestRegressor(featuresCol = "features", labelCol = "ARR_DELAY", maxDepth = maxDepth)
-#   pipeline = Pipeline(stages=[assembler, rf])
-  # Train model and predict labels
-  model = rf.fit(trainingData)
-  predictions = model.transform(testData)
-  
-#   Logging the model
-  mlflow.sklearn.log_model(rf,
-                           artifact_path="rf_regression_model")
-#   Logging metrics
-  evaluator = RegressionEvaluator(labelCol="ARR_DELAY", predictionCol="features", metricName="rmse")
-  rmse = evaluator.evaluate(predictions)
-  mlfow.log_metric("rmse",rmse)
-  
-#   info = run.info
-    
-#   print(f"Inside MLflow Run\n  - Run ID: {info.run_uuid}\n  - Experiment ID: {info.experiment_id}")
+from mlflow.tracking import MlflowClient
+
+client = MlflowClient()
+runs = client.search_runs(run.info.experiment_id,
+                          order_by=["attributes.start_time desc"], 
+                          max_results=1)
+run_id = runs[0].info.run_id
+runs[0].data.metrics
 
 # COMMAND ----------
 
-with mlflow.start_run(run_name="Flight_Predictions_RF") as run:
-  # Initialize model
-  model = RandomForestRegressor(featuresCol="indexedFeatures")
-  # Train model and predict labels
-  model.fit(X, y_train)
-  signature = infer_signature(X_copy, y_train)
-  
-  y_pred = model.predict(X_test.toPandas().values)
+# MAGIC %md
+# MAGIC # 4. Load Model and Predict Arrival Delay
 
-  # Log 
-  mlflow.sklearn.log_model(model, 
-                           artifact_path="{}_rf_model".format(airport_id),
-                          register_model_name="{}-reg-rf-model".format(airport_id),
-                          signature=signature)
-  tags = {"start_of_training": start_date, "end_of_training":end_date}
-  # Create metrics
-  mse = mean_squared_error(y_test, y_pred)
-  # Log metrics
-  mlflow.log_metric("mse", mse)
-  info = run.info
-    
-  print(f"Inside MLflow Run\n  - Run ID: {info.run_uuid}\n  - Experiment ID: {info.experiment_id}")
+# COMMAND ----------
+
+# Load saved model with MLflow
+pipelineModel = mlflow.spark.load_model(f"runs:/{run_id}/model")
+predDF = pipelineModel.transform(testDF)
+y_true_pred_df = predDF.select(["ARR_DELAY", "prediction"])
+display(y_true_pred_df)
 
 # COMMAND ----------
 
