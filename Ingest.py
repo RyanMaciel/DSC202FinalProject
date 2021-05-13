@@ -23,6 +23,9 @@ print(weatherDF.schema.names)
 
 # COMMAND ----------
 
+from pyspark.sql.functions import *
+
+
 # Ryan - Taken from the data validation demo notebook. Split up the weather data into a more parsable format.
 priorColumns = weatherDF.schema.names
 
@@ -101,7 +104,7 @@ for name, location in airportLocations.items():
   filterExpressions.append(expression)
   
 
-filterExpression = functools.reduce(lambda a,b : a | b, expressions)
+filterExpression = functools.reduce(lambda a,b : a | b, filterExpressions)
 localWeatherDF = parsedWeatherDF.filter(filterExpression)
 
 newColumnExpressions.otherwise("Unknown")
@@ -142,9 +145,74 @@ display(weatherDF.filter(weatherDF.NAME == "DAL FTW WSCMO AIRPORT, TX US"))
 
 from pyspark.sql.utils import AnalysisException
 try:
-  localWeatherDF.write.saveAsTable("bronze_weather_data_ingest")
+  aggDF.write.saveAsTable("bronze_weather_data_ingest_agg")
 except AnalysisException:
   print("Table already exists")
+
+
+
+
+# COMMAND ----------
+
+from pyspark.sql.functions import *
+aggDF = spark.sql("SELECT * FROM bronze_weather_data_ingest_agg")
+
+
+airportDF = spark.sql("SELECT * FROM bronze_air_traffic_cleaned_v3")
+
+airportDF = (airportDF.withColumn("SCHEDULED_DEP_TIME", date_trunc('hour', "SCHEDULED_DEP_TIME"))
+             .withColumn("SCHEDULED_ARR_TIME", date_trunc('hour', "SCHEDULED_ARR_TIME")))
+
+
+
+
+# COMMAND ----------
+
+display(airportDF)
+
+# COMMAND ----------
+
+originAgg = aggDF.select(col("close_airport"),
+                         col("time"),
+                         col("tot_precip_mm").alias("orgin_tot_precip_mm"),
+                         col("avg_wnd_mps").alias("orgin_avg_wnd_mps"),
+                         col("avg_vis_m").alias("orgin_avg_vis_m"),
+                         col("avg_slp_hpa").alias("orgin_avg_slp_hpa"),
+                         col("avg_dewpt_f").alias("orgin_avg_dewpt_f")
+                        )
+destAgg = aggDF.select(col("close_airport"),
+                         col("time"),
+                         col("tot_precip_mm").alias("dest_tot_precip_mm"),
+                         col("avg_wnd_mps").alias("dest_avg_wnd_mps"),
+                         col("avg_vis_m").alias("dest_avg_vis_m"),
+                         col("avg_slp_hpa").alias("dest_avg_slp_hpa"),
+                         col("avg_dewpt_f").alias("dest_avg_dewpt_f")
+                        )
+display(originAgg)
+display(destAgg)
+
+# COMMAND ----------
+
+originJoined = airportDF.join(originAgg, [(airportDF["ORIGIN"] == originAgg["close_airport"]) &
+                              (airportDF["SCHEDULED_DEP_TIME"] == originAgg["time"])], "left").drop("close_airport", "time")
+fullJoined = originJoined.join(destAgg, [(originJoined["DEST"] == destAgg["close_airport"]) &
+                              (originJoined["SCHEDULED_ARR_TIME"] == destAgg["time"])], "left").drop("close_airport", "time")
+
+
+# COMMAND ----------
+
+display(fullJoined)
+
+# COMMAND ----------
+
+from pyspark.sql.utils import AnalysisException
+try:
+  fullJoined.write.saveAsTable("bronze_airport_weather_join")
+except AnalysisException:
+  print("Table already exists")
+
+
+
 
 # COMMAND ----------
 
