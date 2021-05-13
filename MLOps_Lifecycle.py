@@ -21,10 +21,25 @@
 
 # COMMAND ----------
 
-airport_code = "SFO"
-training_start_date = "2018-01-01"
-training_end_date = "2019-01-01"
-inference_date = "2019-03-16"
+from datetime import datetime as dt
+from datetime import timedelta
+# airport_code = "SFO"
+# training_start_date = "2018-01-01"
+# training_end_date = "2019-01-01"
+# inference_date = "2019-03-16"
+
+dbutils.widgets.dropdown("00.Airport_Code", "JFK", ["JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH"])
+dbutils.widgets.text('01.training_start_date', "2018-01-01")
+dbutils.widgets.text('02.training_end_date', "2019-03-15")
+dbutils.widgets.text('03.inference_date', (dt.strptime(str(dbutils.widgets.get('02.training_end_date')), "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d"))
+
+airport_code = dbutils.widgets.get("00.Airport_Code")
+training_start_date = dbutils.widgets.get("01.training_start_date")
+training_end_date = dbutils.widgets.get("02.training_end_date")
+inference_date = dbutils.widgets.get("03.inference_date")
+
+
+
 
 # COMMAND ----------
 
@@ -237,7 +252,7 @@ client.transition_model_version_stage(
 
 # COMMAND ----------
 
-display(df_inference)
+#display(df_inference)
 
 # COMMAND ----------
 
@@ -262,3 +277,7 @@ df_inference_pd["Predictions"] = loaded_model.predict(df_inference.toPandas())
 # COMMAND ----------
 
 df_inference_pd[["ORIGIN", "DEST", "OP_CARRIER_FL_NUM", "SCHEDULED_DEP_TIME", "Predictions"]]
+
+# COMMAND ----------
+
+dbutils.notebook.exit("Success")

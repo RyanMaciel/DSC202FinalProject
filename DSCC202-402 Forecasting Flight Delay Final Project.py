@@ -158,9 +158,11 @@ print(airport_code,training_start_date,training_end_date,inference_date)
 # COMMAND ----------
 
 # run link to the modeling notebook
-#status = dbutils.notebook.run(<PATH TO YOUR ML MODELING NOTEBOOK>, 3600, "00.Airport_Code":airport_code,"01.training_start_date":training_start_date,"02.training_end_date":training_end_date,"03.inference_date":inference_date})
-# if status == "Success" print("Passed") else print("Failed")
-# NOTE NOTEBOOK SHOULD RETURN dbutils.notebook.exit("Success") WHEN IT PASSES
+status = dbutils.notebook.run("MLOps_Lifecycle", 3600, {"00.Airport_Code":airport_code,"01.training_start_date":training_start_date,"02.training_end_date":training_end_date,"03.inference_date":inference_date})
+if status == "Success":
+  print("Passed")
+else:
+  print("Failed")
 
 # COMMAND ----------
 
