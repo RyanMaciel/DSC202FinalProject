@@ -184,12 +184,13 @@ for mv in client.search_model_versions(f"name='{model_name}'"):
   runs_df_data.append((run_id, run_version, run.data.metrics["r2"], run.data.metrics["rmse"]))
 
   runs_df = spark.createDataFrame(data=runs_df_data,schema=runs_df_schema)
+  runs_df = runs_df.sort("rmse", "r2")
 display(runs_df)
 
 # COMMAND ----------
 
 # https://stackoverflow.com/questions/40661859/getting-the-first-value-from-spark-sql-row
-best_run = runs_df.sort("rmse", "r2").take(1)[0]
+best_run = runs_df.take(1)[0]
 best_run_id, best_run_version = best_run[0], best_run[1]
 
 # COMMAND ----------
@@ -209,3 +210,57 @@ client.transition_model_version_stage(
       version=best_run_version,
       stage="Production"
 )
+
+# COMMAND ----------
+
+import mlflow
+from pyspark.sql.functions import col, to_date
+logged_model = 'runs:/9d26c740a6d941ffb54b10ca4b589f2c/SFO_rfr'
+
+# Load model as a Spark UDF.
+loaded_model = mlflow.pyfunc.spark_udf(spark, model_uri=logged_model)
+
+# Predict on a Spark DataFrame.
+df_inference = (df.filter(df.DEST == airport_code)
+                  .filter(to_date(col("SCHEDULED_DEP_TIME")) == inference_date))
+
+# COMMAND ----------
+
+display(df_inference)
+
+# COMMAND ----------
+
+print(loaded_model)
+
+# COMMAND ----------
+
+from pyspark.ml import Pipeline
+stringIndexer, vecAssembler = load_assemblers(df_inference)
+pipeline = Pipeline(stages=[stringIndexer, vecAssembler, loaded_model])
+# pipeline = Pipeline()
+
+# COMMAND ----------
+
+pipelineModel = pipeline.fit(df_inference)
+
+# COMMAND ----------
+
+pred_df = df_inference.withColumn('predictions', loaded_model(columns)).collect()
+pred_df.display()
+
+# COMMAND ----------
+
+import mlflow
+logged_model = 'runs:/9d26c740a6d941ffb54b10ca4b589f2c/SFO_rfr'
+
+# Load model as a PyFuncModel.
+loaded_model = mlflow.pyfunc.load_model(logged_model)
+
+# Predict on a Pandas DataFrame.
+import pandas as pd
+df_inference_pd = df_inference.toPandas()
+df_inference_pd["Predictions"] = loaded_model.predict(df_inference.toPandas())
+
+# COMMAND ----------
+
+df_inference_pd[["ORIGIN", "DEST", "OP_CARRIER_FL_NUM", "SCHEDULED_DEP_TIME", "Predictions"]]
