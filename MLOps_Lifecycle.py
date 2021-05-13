@@ -195,10 +195,15 @@ best_run_id, best_run_version = best_run[0], best_run[1]
 
 # COMMAND ----------
 
+second_best_run = runs_df.take(2)[1]
+second_best_run_id, second_best_run_version = second_best_run[0], second_best_run[1]
+
+# COMMAND ----------
+
 # archive the current production version
 for mv in client.search_model_versions(f"name='{model_name}'"):
   if dict(mv)['current_stage'] == 'Production':
-      # Archive the currently staged model
+      # Archive the current production model
       client.transition_model_version_stage(
           name=dict(mv)['name'],
           version=dict(mv)['version'],
@@ -213,16 +218,22 @@ client.transition_model_version_stage(
 
 # COMMAND ----------
 
-import mlflow
-from pyspark.sql.functions import col, to_date
-logged_model = 'runs:/9d26c740a6d941ffb54b10ca4b589f2c/SFO_rfr'
-
-# Load model as a Spark UDF.
-loaded_model = mlflow.pyfunc.spark_udf(spark, model_uri=logged_model)
-
-# Predict on a Spark DataFrame.
-df_inference = (df.filter(df.DEST == airport_code)
-                  .filter(to_date(col("SCHEDULED_DEP_TIME")) == inference_date))
+# Do the same, but for a staging model
+# archive the current production version
+for mv in client.search_model_versions(f"name='{model_name}'"):
+  if dict(mv)['current_stage'] == 'Staging':
+      # Archive the currently staged model
+      client.transition_model_version_stage(
+          name=dict(mv)['name'],
+          version=dict(mv)['version'],
+          stage="Archived"
+      )
+# and set the best model version to production
+client.transition_model_version_stage(
+      name=model_name,
+      version=second_best_run_version,
+      stage="Staging"
+)
 
 # COMMAND ----------
 
@@ -230,30 +241,17 @@ display(df_inference)
 
 # COMMAND ----------
 
-print(loaded_model)
+# stage can be "Production" or "Staging"
+def get_logged_model(model_name, stage):
+  for mv in client.search_model_versions(f"name='{model_name}'"):
+    if dict(mv)['current_stage'] == stage:
+      run_id = dict(mv)["run_id"]
+      return "runs:/" + run_id + "/{0}_rfr".format(airport_code)
+  
+logged_model = get_logged_model(model_name, "Production")
 
 # COMMAND ----------
 
-from pyspark.ml import Pipeline
-stringIndexer, vecAssembler = load_assemblers(df_inference)
-pipeline = Pipeline(stages=[stringIndexer, vecAssembler, loaded_model])
-# pipeline = Pipeline()
-
-# COMMAND ----------
-
-pipelineModel = pipeline.fit(df_inference)
-
-# COMMAND ----------
-
-pred_df = df_inference.withColumn('predictions', loaded_model(columns)).collect()
-pred_df.display()
-
-# COMMAND ----------
-
-import mlflow
-logged_model = 'runs:/9d26c740a6d941ffb54b10ca4b589f2c/SFO_rfr'
-
-# Load model as a PyFuncModel.
 loaded_model = mlflow.pyfunc.load_model(logged_model)
 
 # Predict on a Pandas DataFrame.
