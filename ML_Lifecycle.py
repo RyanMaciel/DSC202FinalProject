@@ -166,19 +166,51 @@ y_true_pred_df.show(5)
 
 # MAGIC %md
 # MAGIC # 5. Trying to generalize everything and connect to airport code and training start and end date
+# MAGIC # Moved to notebook "MLOps_Lifecycle"
 
 # COMMAND ----------
 
 # variables considered as parameters from the main notebook
 airport_code = "SFO"
-training_start_date = "2018/01/01"
+training_start_date = "2018-01-01"
 training_end_date = "2019-01-01"
 inference_date = "2019-03-16"
 
 # COMMAND ----------
 
-def train_model(df_orig):
-  from pyspark.sql.functions import col
+def load_assemblers(df):
+  
+  # Encoding categorical columns using a StringIndexer
+  # https://spark.apache.org/docs/latest/ml-features#stringindexer
+  categoricalCols = [field for (field, dType) in df.dtypes if dType=="string"]
+  indexOutputCols = [x + "Index" for x in categoricalCols]
+  stringIndexer = StringIndexer(inputCols=categoricalCols,
+                                outputCols=indexOutputCols, 
+                                handleInvalid="skip")
+  numericCols = [field for (field, dType) in df.dtypes if (dType=="double" and \
+                                                                field not in ['SCHEDULED_DEP_TIME', 'SCHEDULED_ARR_TIME', 'WHEELS_OFF', 'WHEELS_ON'] and \
+                                                                field != 'ARR_DELAY')]
+  assemblerInputs = indexOutputCols + numericCols
+  vecAssembler = VectorAssembler(inputCols=assemblerInputs,
+                                outputCol="features")
+
+  return stringIndexer, vecAssembler
+
+# COMMAND ----------
+
+def train_model(df_orig, maxDepth, numTrees):
+  from pyspark.sql.functions import col, to_date
+  import mlflow
+  import mlflow.spark
+  import pandas as pd
+  import uuid
+  from pyspark.ml import Pipeline
+  from pyspark.ml.feature import StringIndexer, VectorAssembler
+  from pyspark.ml.regression import RandomForestRegressor
+  from pyspark.ml.evaluation import RegressionEvaluator
+  from pyspark.sql.functions import lit
+  from mlflow.tracking import MlflowClient
+
 # The following dataframe contains the destination airport and the training dates range. They are used for training and testing a dataset in the training dates range.
 # This is where we measure the performance from.
   df = (df_orig.filter(df_orig.DEST == airport_code)
@@ -190,8 +222,10 @@ def train_model(df_orig):
                   .filter(to_date(col("SCHEDULED_DEP_TIME")) == inference_date))
   dest = airport_code
   (trainDF, testDF) = df.randomSplit([0.8,0.2], seed=42)
+  
+  stringIndexer, vecAssembler = load_assemblers(df_orig)
   with mlflow.start_run(run_name="flights-randomforest-with-regressors-{0}".format(dest)) as run:
-    rf = RandomForestRegressor(featuresCol = "features", labelCol="ARR_DELAY", maxDepth=5, numTrees=100, seed=42)
+    rf = RandomForestRegressor(featuresCol = "features", labelCol="ARR_DELAY", maxDepth=maxDepth, numTrees=numTrees)
     pipeline = Pipeline(stages=[stringIndexer, vecAssembler, rf])
     mlflow.log_param("num_trees", rf.getNumTrees())
     mlflow.log_param("max_depth", rf.getMaxDepth())
@@ -199,8 +233,7 @@ def train_model(df_orig):
     pipelineModel = pipeline.fit(trainDF)
     # it is at this point where the pipeline "modifies" the training dataset and vectorizes it
     mlflow.spark.log_model(pipelineModel,
-                           artifact_path="{0}_rfr".format(airport_code),
-                           registered_model_name = "rfr_{0}_{1}_{2}_{3}".format(airport_code, training_start_date, training_end_date, inference_date))
+                           "{0}_rfr".format(airport_code))
     
     tags = {"training_start_date": training_start_date, "training_end_date": training_end_date}
     mlflow.set_tags(tags)
@@ -213,28 +246,38 @@ def train_model(df_orig):
     r2 = regressionEvaluator.setMetricName("r2").evaluate(predDF)
     mlflow.log_metrics({"rmse": rmse, "r2": r2})
     
+    
+  client = MlflowClient()
+  runs = client.search_runs(run.info.experiment_id,
+                          order_by=["attributes.start_time desc"], 
+                          max_results=1)
+  runID = runs[0].info.run_uuid
+  model_name = "rfr_{0}_{1}_{2}_{3}".format(airport_code, training_start_date, training_end_date, inference_date)
+  model_uri = "runs:/{run_id}/{code}_rfr".format(run_id=runID, code = dest)
+  model_details = mlflow.register_model(model_uri=model_uri, name=model_name)
+#   model_details
     # move this latest version of the model to the Staging if there is a production version
     # else register it as the production version
-    model_name = "rfr_{0}_{1}_{2}_{3}".format(airport_code, training_start_date, training_end_date, inference_date)
-    model_version = dict(client.search_model_versions(f"name='{model_name}'")[0])['version']
-    model_stage = "Production"
-    for mv in client.search_model_versions(f"name='{model_name}'"):
-      if dict(mv)['current_stage'] == 'Staging':
-          # Archive the currently staged model
-          client.transition_model_version_stage(
-              name=dict(mv)['name'],
-              version=dict(mv)['version'],
-              stage="Archived"
-          )
-          model_stage = "Staging"
-      elif dict(mv)['current_stage'] == 'Production':
-          model_stage = "Staging"
-    # move the model to the appropriate stage.
-    client.transition_model_version_stage(
-        name=model_name,
-        version=model_version,
-        stage=model_stage
-    )
+    
+  model_version = dict(client.search_model_versions(f"name='{model_name}'")[0])['version']
+  model_stage = "Production"
+  for mv in client.search_model_versions(f"name='{model_name}'"):
+    if dict(mv)['current_stage'] == 'Staging':
+        # Archive the currently staged model
+        client.transition_model_version_stage(
+            name=dict(mv)['name'],
+            version=dict(mv)['version'],
+            stage="Archived"
+        )
+        model_stage = "Staging"
+    elif dict(mv)['current_stage'] == 'Production':
+        model_stage = "Staging"
+  # move the model to the appropriate stage.
+  client.transition_model_version_stage(
+      name=model_name,
+      version=model_version,
+      stage=model_stage
+  )
         
   predicted_inference_DF = pipelineModel.transform(df_inference)
 #   the idea now is to return the predicted delay for each model version and save these things in a table such as the one in notebook 06 RandomForest with Time & Weather.
@@ -255,7 +298,52 @@ display(inputs)
 
 # COMMAND ----------
 
-predicted_inference_DF = train_model(inputs)
+predicted_inference_DF = train_model(inputs, 6, 50)
 
 # COMMAND ----------
 
+predicted_inference_DF.select("SCHEDULED_DEP_TIME", "ARR_DELAY", "prediction").display()
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## Trying to find the best version of the models
+
+# COMMAND ----------
+
+# https://www.mlflow.org/docs/latest/python_api/mlflow.tracking.html
+
+from pprint import pprint
+from mlflow.tracking import MlflowClient
+
+
+client = MlflowClient()
+model_name = "rfr_{0}_{1}_{2}_{3}".format(airport_code, training_start_date, training_end_date, inference_date)
+
+from pyspark.sql.types import StringType, DoubleType, StructType, StructField
+
+runs_df_schema = StructType([ \
+    StructField("run_id",StringType(),True), \
+    StructField("r2",DoubleType(),True), \
+    StructField("rmse",DoubleType(),True), \
+  ])
+runs_df_data = []
+for mv in client.search_model_versions(f"name='{model_name}'"):
+  pprint(mv)
+  run_id = dict(mv)["run_id"]
+  run = client.get_run(run_id)
+#   pprint(run)
+  print(run.data.metrics)
+  runs_df_data.append((run_id, run.data.metrics["r2"], run.data.metrics["rmse"]))
+#   metrics = ["metrics"]
+  print("~~~~~~~~~~~~~~~~")
+  
+print("$$$$$$$$$$$$$$$$$$$$$$")
+runs_df = spark.createDataFrame(data=runs_df_data,schema=runs_df_schema)
+display(runs_df)
+
+# COMMAND ----------
+
+# https://stackoverflow.com/questions/40661859/getting-the-first-value-from-spark-sql-row
+best_run_id = runs_df.sort("rmse", "r2").take(1)[0][0]
+best_run_id
