@@ -105,18 +105,17 @@
 
 from datetime import datetime as dt
 from datetime import timedelta
-#test comment by Nishith
 dbutils.widgets.removeAll()
 
-dbutils.widgets.dropdown("00.Airport_Code", "JFK", ["JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH"])
-dbutils.widgets.text('01.training_start_date', "2018-01-01")
-dbutils.widgets.text('02.training_end_date', "2019-03-15")
-dbutils.widgets.text('03.inference_date', (dt.strptime(str(dbutils.widgets.get('02.training_end_date')), "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d"))
+dbutils.widgets.dropdown("Airport Code", "JFK", ["JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH"])
+dbutils.widgets.text('Training Start Date', "2018-01-01")
+dbutils.widgets.text('Training End Date', "2018-02-01")
+dbutils.widgets.text('Inference Date', (dt.strptime(str(dbutils.widgets.get('Training End Date')), "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d"))
 
-training_start_date = str(dbutils.widgets.get('01.training_start_date'))
-training_end_date = str(dbutils.widgets.get('02.training_end_date'))
-inference_date = str(dbutils.widgets.get('03.inference_date'))
-airport_code = str(dbutils.widgets.get('00.Airport_Code'))
+training_start_date = str(dbutils.widgets.get('Training Start Date'))
+training_end_date = str(dbutils.widgets.get('Training End Date'))
+inference_date = str(dbutils.widgets.get('Inference Date'))
+airport_code = str(dbutils.widgets.get('Airport Code'))
 print(airport_code,training_start_date,training_end_date,inference_date)
 
 # COMMAND ----------
@@ -139,8 +138,11 @@ print(airport_code,training_start_date,training_end_date,inference_date)
 # COMMAND ----------
 
 # run link to the monitoring notebook
-#status = dbutils.notebook.run(<PATH TO YOUR MONITORING NOTEBOOK>, 3600, "00.Airport_Code":airport_code,"01.training_start_date":training_start_date,"02.training_end_date":training_end_date,"03.inference_date":inference_date})
-# if status == "Success" print("Passed") else print("Failed")
+status = dbutils.notebook.run("Model_Monitoring", 3600, {"Airport Code": airport_code, "Training Start Date": training_start_date, "Training End Date": training_end_date, "Inference Date": inference_date})
+if status == "Success":
+  print("Passed") 
+else:
+  print("Failed")
 # NOTE NOTEBOOK SHOULD RETURN dbutils.notebook.exit("Success") WHEN IT PASSES
 
 # COMMAND ----------

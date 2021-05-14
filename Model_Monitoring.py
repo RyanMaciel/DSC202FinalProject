@@ -1,11 +1,20 @@
 # Databricks notebook source
 from datetime import datetime as dt
 
-airport_code = "SFO"
-training_start_date = "2018-01-01"
-training_end_date = "2018-02-01"
-dbutils.widgets.text('Inference Date', "2019-03-15")
+airport_code = str(dbutils.widgets.get('Airport Code'))
+training_start_date = str(dbutils.widgets.get('Training Start Date'))
+training_end_date = str(dbutils.widgets.get('Training End Date'))
 inference_date = str(dbutils.widgets.get('Inference Date'))
+
+print(airport_code)
+print(training_start_date)
+print(training_end_date)
+print(inference_date)
+
+# training_start_date = "2018-01-01"
+# training_end_date = "2018-02-01"
+# dbutils.widgets.text('Inference Date', "2019-03-15")
+# inference_date = str(dbutils.widgets.get('Inference Date'))
 
 dbutils.widgets.dropdown('Promote model?', "No", ["Yes", "No"])
 promote_model = True if str(dbutils.widgets.get('Promote model?')) == "Yes" else False
@@ -41,6 +50,11 @@ def get_logged_model(model_name, stage):
 
 logged_model_production, prod_version = get_logged_model(model_name, "Production")
 logged_model_staging, stage_version = get_logged_model(model_name, "Staging")
+
+# COMMAND ----------
+
+print(logged_model_production, prod_version)
+print(logged_model_staging, stage_version)
 
 # COMMAND ----------
 
@@ -126,3 +140,4 @@ if promote_model and loaded_model_production is not None and loaded_model_stagin
 
 # COMMAND ----------
 
+dbutils.notebook.exit("Success")
