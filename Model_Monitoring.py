@@ -1,6 +1,11 @@
 # Databricks notebook source
 from datetime import datetime as dt
 
+dbutils.widgets.dropdown("Airport Code", "JFK", ["JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH"])
+dbutils.widgets.text('Training Start Date', "2018-01-01")
+dbutils.widgets.text('Training End Date', "2018-02-01")
+dbutils.widgets.text('Inference Date', (dt.strptime(str(dbutils.widgets.get('Training End Date')), "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d"))
+
 airport_code = str(dbutils.widgets.get('Airport Code'))
 training_start_date = str(dbutils.widgets.get('Training Start Date'))
 training_end_date = str(dbutils.widgets.get('Training End Date'))
@@ -81,37 +86,26 @@ df_monitoring_pd["Predictions_Staging"] = loaded_model_staging.predict(df_monito
 
 # COMMAND ----------
 
-df_monitoring_spark = spark.createDataFrame(df_monitoring_pd)
+df_monitoring_pd['residual_staging'] = df_monitoring_pd["ARR_DELAY"] - df_monitoring_pd["Predictions_Staging"]
+df_monitoring_pd['residual_production'] = df_monitoring_pd["ARR_DELAY"] - df_monitoring_pd["Predictions_Production"]
 
 # COMMAND ----------
 
-display(df_monitoring_spark)
+df_monitoring_pd = df_monitoring_pd.sort_values(by = "SCHEDULED_DEP_TIME")
 
 # COMMAND ----------
 
-df_monitoring_spark = df_monitoring_spark.withColumn('residual_staging', col("ARR_DELAY") - col("Predictions_Staging"))
-df_monitoring_spark = df_monitoring_spark.withColumn('residual_production', col("ARR_DELAY") - col("Predictions_Production"))
+import plotly.express as px
 
-
-# COMMAND ----------
-
-display(df_monitoring_spark)
+fig = px.line(df_monitoring_pd, x = "SCHEDULED_DEP_TIME", y = ["ARR_DELAY", "Predictions_Production", "Predictions_Staging"], title = "Scatterplot of {0} with Production and Staging model for date {1} with respect to actual delay".format(airport_code, inference_date))
+fig.show()
 
 # COMMAND ----------
 
-df_monitoring_pd_1 = df_monitoring_spark.toPandas()
-
-# COMMAND ----------
-
-# pdf['stage']="prod"
-# pdf['residual']=pdf['y']-pdf['yhat']
-# sdf['stage']="staging"
-# sdf['residual']=sdf['y']-sdf['yhat']
-# df=pd.concat([pdf,sdf])
 import plotly.express as px
 
 fig = px.scatter(
-    df_monitoring_pd_1, x='ARR_DELAY', y=['residual_staging', 'residual_production'],
+    df_monitoring_pd, x='ARR_DELAY', y=['residual_staging', 'residual_production'],
     marginal_y='violin',
     title="Residual plot for date {} on airport {}".format(monitoring_date, airport_code)
 )
@@ -119,7 +113,7 @@ fig.show()
 
 # COMMAND ----------
 
-# promote staging to production
+# promote staging to production using widget
 from mlflow.tracking import MlflowClient
 
 client = MlflowClient()

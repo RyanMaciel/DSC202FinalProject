@@ -159,9 +159,12 @@ else:
 
 # COMMAND ----------
 
-# run link to the modeling notebook
-#status = dbutils.notebook.run(<PATH TO YOUR ML MODELING NOTEBOOK>, 3600, "00.Airport_Code":airport_code,"01.training_start_date":training_start_date,"02.training_end_date":training_end_date,"03.inference_date":inference_date})
-# if status == "Success" print("Passed") else print("Failed")
+# run link to the MLops Lifecycle notebook
+status = dbutils.notebook.run("MLOps_Lifecycle", 3600, {"Airport Code": airport_code, "Training Start Date": training_start_date, "Training End Date": training_end_date, "Inference Date": inference_date})
+if status == "Success":
+  print("Passed") 
+else:
+  print("Failed")
 # NOTE NOTEBOOK SHOULD RETURN dbutils.notebook.exit("Success") WHEN IT PASSES
 
 # COMMAND ----------
@@ -178,10 +181,13 @@ else:
 
 # COMMAND ----------
 
-# run link to the modeling notebook
-#status = dbutils.notebook.run(<PATH TO YOUR ETL NOTEBOOK>, 3600, "00.Airport_Code":airport_code,"01.training_start_date":training_start_date,"02.training_end_date":training_end_date,"03.inference_date":inference_date})
-# if status == "Success" print("Passed") else print("Failed")
-# NOTE NOTEBOOK SHOULD RETURN dbutils.notebook.exit("Success") WHEN IT PASSES
+#run link to the modeling notebook
+status = dbutils.notebook.run("ETL", 3600)
+if status == "Success":
+  print("Passed") 
+else:
+  print("Failed")
+#NOTE NOTEBOOK SHOULD RETURN dbutils.notebook.exit("Success") WHEN IT PASSES
 
 # COMMAND ----------
 
