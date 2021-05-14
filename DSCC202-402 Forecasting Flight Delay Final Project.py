@@ -161,7 +161,7 @@ else:
 
 
 # run link to the modeling notebook
-status = dbutils.notebook.run("MLOps_Lifecycle", 3600, {"00.Airport_Code":airport_code,"01.training_start_date":training_start_date,"02.training_end_date":training_end_date,"03.inference_date":inference_date})
+status = dbutils.notebook.run("MLOps_Lifecycle", 3600, {"Airport Code":airport_code,"Training Start Date":training_start_date,"Training End Date":training_end_date,"Inference Date":inference_date})
 if status == "Success":
   print("Passed")
 else:
