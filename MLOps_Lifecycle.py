@@ -39,8 +39,13 @@ print(airport_code)
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC USE dscc202_group02_db
+
+
+airport_code = str(dbutils.widgets.get('Airport Code'))
+training_start_date = str(dbutils.widgets.get('Training Start Date'))
+training_end_date = str(dbutils.widgets.get('Training End Date'))
+inference_date = str(dbutils.widgets.get('Inference Date'))
+
 
 # COMMAND ----------
 
@@ -135,7 +140,7 @@ def train_model(df_orig, maxDepth, numTrees, stringIndexer, vecAssembler):
                           order_by=["attributes.start_time desc"], 
                           max_results=1)
   runID = runs[0].info.run_uuid
-  model_name = "rfr_{0}_{1}_{2}_{3}".format(airport_code, training_start_date, training_end_date, inference_date)
+  model_name = "rfr_{0}_{1}_{2}".format(airport_code, training_start_date, training_end_date)
   model_uri = "runs:/{run_id}/{code}_rfr".format(run_id=runID, code = dest)
   model_details = mlflow.register_model(model_uri=model_uri, name=model_name)
 #   model_details
@@ -189,7 +194,7 @@ from mlflow.tracking import MlflowClient
 from pyspark.sql.types import StringType, DoubleType, IntegerType, StructType, StructField
 
 client = MlflowClient()
-model_name = "rfr_{0}_{1}_{2}_{3}".format(airport_code, training_start_date, training_end_date, inference_date)
+model_name = "rfr_{0}_{1}_{2}".format(airport_code, training_start_date, training_end_date)
 
 runs_df_schema = StructType([ \
     StructField("run_id",StringType(),True), \
@@ -273,10 +278,14 @@ logged_model = get_logged_model(model_name, "Production")
 
 # COMMAND ----------
 
+import pandas as pd
+from pyspark.sql.functions import col, to_date
+
 loaded_model = mlflow.pyfunc.load_model(logged_model)
+df_inference = (df.filter(df.DEST == airport_code)
+                  .filter(to_date(col("SCHEDULED_DEP_TIME")) == inference_date))
 
 # Predict on a Pandas DataFrame.
-import pandas as pd
 df_inference_pd = df_inference.toPandas()
 df_inference_pd["Predictions"] = loaded_model.predict(df_inference.toPandas())
 
@@ -287,3 +296,4 @@ df_inference_pd[["ORIGIN", "DEST", "OP_CARRIER_FL_NUM", "SCHEDULED_DEP_TIME", "P
 # COMMAND ----------
 
 dbutils.notebook.exit("Success")
+
