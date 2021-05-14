@@ -322,6 +322,14 @@ print(airportsOfInterestDF.count(), len(airportsOfInterestDF.columns))
 
 # COMMAND ----------
 
+display(airportsOfInterestDF.select([count(when(isnull(c), c)).alias(c) for c in airportsOfInterestDF.columns]))
+
+# COMMAND ----------
+
+
+
+# COMMAND ----------
+
 from pyspark.sql.functions import *
 
 airportsOfInterestDF = ( airportsOfInterestDF
@@ -378,57 +386,76 @@ except:
 
 # COMMAND ----------
 
-# code from the "Data Validation and Monitoring" shared notebook
-query = """
-select * from dscc202_db.bronze_weather where NAME='NY CITY CENTRAL PARK, NY US' and REPORT_TYPE='FM-15' and DATE > '2020';
-"""
-df = spark.sql(query)
-
-# COMMAND ----------
-
 from pyspark.sql.functions import *
-from pyspark.sql.types import *
-
-
-#read the NYC weather data from 2020 and aggregate it by the hour
-nyc_weather_df=(spark.sql(query)
-        .withColumn('temp_f', split(col('TMP'),",")[0]*9/50+32)
-        .withColumn('temp_qual', split(col('TMP'),",")[1])
-        .withColumn('wnd_deg', split(col('WND'),",")[0])
-        .withColumn('wnd_1', split(col('WND'),",")[1])
-        .withColumn('wnd_2', split(col('WND'),",")[2])
-        .withColumn('wnd_mps', split(col('WND'),",")[3]/10)
-        .withColumn('wnd_4', split(col('WND'),",")[4])
-        .withColumn('vis_m', split(col('VIS'),",")[0])
-        .withColumn('vis_1', split(col('VIS'),",")[1])
-        .withColumn('vis_2', split(col('VIS'),",")[2])
-        .withColumn('vis_3', split(col('VIS'),",")[3])
-        .withColumn('dew_pt_f', split(col('DEW'),",")[0]*9/50+32)
-        .withColumn('dew_1', split(col('DEW'),",")[1])
-        .withColumn('slp_hpa', split(col('SLP'),",")[0]/10)
-        .withColumn('slp_1', split(col('SLP'),",")[1])
-        .withColumn('precip_hr_dur', split(col('AA1'),",")[0])
-        .withColumn('precip_mm_intvl', split(col('AA1'),",")[1]/10)
-        .withColumn('precip_cond', split(col('AA1'),",")[2])
-        .withColumn('precip_qual', split(col('AA1'),",")[3])
-        .withColumn('precip_mm', col('precip_mm_intvl')/col('precip_hr_dur'))
-        .withColumn("time", date_trunc('hour', "DATE"))
-        .where("NAME='NY CITY CENTRAL PARK, NY US' and REPORT_TYPE='FM-15'")
-        .groupby("time")
-        .agg(mean('temp_f').alias('avg_temp_f'), \
-             sum('precip_mm').alias('tot_precip_mm'), \
-             mean('wnd_mps').alias('avg_wnd_mps'), \
-             mean('vis_m').alias('avg_vis_m'),  \
-             mean('slp_hpa').alias('avg_slp_hpa'),  \
-             mean('dew_pt_f').alias('avg_dewpt_f'), )
-   )
+weather_airports = spark.sql("""SELECT * FROM dscc202_group02_db.bronze_airport_weather_join""")
+display(weather_airports.select([count(when(isnull(c), c)).alias(c) for c in weather_airports.columns]))
+print(weather_airports.count())
 
 # COMMAND ----------
 
-# Overwrite table
+from sklearn.impute import KNNImputer
+import numpy as np
+
+def impute(df, groupby, targets):
+  weather_averages = df.na.drop().groupBy(*groupby).agg(
+    *[avg(t).alias("grouped_" + t) for t in targets]
+  )
+  df_with_avg = df.join(weather_averages, groupby, "left")
+
+  prev_imputation_df = df_with_avg;
+  for t in targets:
+    prev_imputation_df = prev_imputation_df.withColumn("imputed_"+t, when(col(t).isNull(), col("grouped_" + t)).otherwise(col(t)))
+  imputed_weather = prev_imputation_df.drop(*["grouped_" + t for t in targets]).drop(*[t for t in targets])
+  for t in targets:
+    imputed_weather = imputed_weather.withColumnRenamed("imputed_"+t, t)
+  return imputed_weather
+
+
+
+
+orgin_imputation_targets = ["orgin_tot_precip_mm",
+                      "orgin_avg_wnd_mps", 
+                      "orgin_avg_vis_m",
+                      "orgin_avg_slp_hpa",
+                      "orgin_avg_dewpt_f",
+                      ];
+dest_imputation_targets = ["dest_tot_precip_mm",
+                          "dest_avg_wnd_mps",
+                          "dest_avg_vis_m",
+                          "dest_avg_slp_hpa",
+                          "dest_avg_dewpt_f"];
+
+weather_airports = weather_airports.withColumn("MONTH_OF_YEAR", month("SCHEDULED_DEP_TIME"))
+
+
+orgin_impute = impute(weather_airports, ["ORIGIN", "MONTH_OF_YEAR"], orgin_imputation_targets)
+full_impute = impute(orgin_impute, ["DEST", "MONTH_OF_YEAR"], dest_imputation_targets)
+display(full_impute)
+display(full_impute.select([count(when(isnull(c), c)).alias(c) for c in full_impute.columns]))
+
+# COMMAND ----------
+
+full_impute = full_impute.drop("MONTH_OF_YEAR")
+from pyspark.sql.utils import AnalysisException
+# overwrite table.
 try:
-  nyc_weather_df.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_weather_v1")
+  full_impute.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_airport_weather_join_imputed")
 except:
   print("Dropping and updating table.")
-  spark.sql("DROP TABLE IF EXISTS dscc202_group02_db.bronze_weather_v1")
-  df_dropNulls20.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_weather_v1")
+  spark.sql("DROP TABLE IF EXISTS dscc202_group02_db.bronze_airport_weather_join_imputed")
+  full_impute.write.mode("overwrite").saveAsTable("dscc202_group02_db.bronze_airport_weather_join_imputed")
+
+
+
+
+# COMMAND ----------
+
+
+
+
+# COMMAND ----------
+
+display(airportDF.select(countDistinct("ORIGIN")))
+
+# COMMAND ----------
+
