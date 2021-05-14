@@ -296,4 +296,3 @@ df_inference_pd[["ORIGIN", "DEST", "OP_CARRIER_FL_NUM", "SCHEDULED_DEP_TIME", "P
 # COMMAND ----------
 
 dbutils.notebook.exit("Success")
-
