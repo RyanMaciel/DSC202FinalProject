@@ -12,6 +12,29 @@
 
 # COMMAND ----------
 
+from datetime import datetime as dt
+from datetime import timedelta
+# airport_code = "SFO"
+# training_start_date = "2018-01-01"
+# training_end_date = "2019-01-01"
+# inference_date = "2019-03-16"
+
+# dbutils.widgets.dropdown("00.Airport_Code", "JFK", ["JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH"])
+# dbutils.widgets.text('01.training_start_date', "2018-01-01")
+# dbutils.widgets.text('02.training_end_date', "2019-03-15")
+# dbutils.widgets.text('03.inference_date', (dt.strptime(str(dbutils.widgets.get('02.training_end_date')), "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d"))
+
+airport_code = dbutils.widgets.get("00.Airport_Code")
+training_start_date = dbutils.widgets.get("01.training_start_date")
+training_end_date = dbutils.widgets.get("02.training_end_date")
+inference_date = dbutils.widgets.get("03.inference_date")
+
+
+print(airport_code)
+
+
+# COMMAND ----------
+
 # MAGIC %run ./includes/configuration
 
 # COMMAND ----------
@@ -21,36 +44,18 @@
 
 # COMMAND ----------
 
-from datetime import datetime as dt
-from datetime import timedelta
-# airport_code = "SFO"
-# training_start_date = "2018-01-01"
-# training_end_date = "2019-01-01"
-# inference_date = "2019-03-16"
-
-dbutils.widgets.dropdown("00.Airport_Code", "JFK", ["JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH"])
-dbutils.widgets.text('01.training_start_date', "2018-01-01")
-dbutils.widgets.text('02.training_end_date', "2019-03-15")
-dbutils.widgets.text('03.inference_date', (dt.strptime(str(dbutils.widgets.get('02.training_end_date')), "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d"))
-
-airport_code = dbutils.widgets.get("00.Airport_Code")
-training_start_date = dbutils.widgets.get("01.training_start_date")
-training_end_date = dbutils.widgets.get("02.training_end_date")
-inference_date = dbutils.widgets.get("03.inference_date")
-
-
-
-
-# COMMAND ----------
-
 df = spark.sql("""
 SELECT * 
-FROM bronze_air_traffic_cleaned_v3 
+FROM bronze_airport_weather_join 
 WHERE ORIGIN IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
 AND DEST IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
 """)
+df = df.drop('orgin_tot_precip_mm', 'dest_tot_precip_mm', 'dest_avg_wnd_mps', 'dest_avg_vis_m', 'dest_avg_slp_hpa', 'dest_avg_dewpt_f', 'orgin_avg_wnd_mps', 'orgin_avg_vis_m', 'orgin_avg_slp_hpa')
+
+
 
 # COMMAND ----------
+
 
 # returns assemblers for a dataframe; i.e. converts the 
 def load_assemblers(df):
@@ -66,6 +71,7 @@ def load_assemblers(df):
   numericCols = [field for (field, dType) in df.dtypes if (dType=="double" and field != 'ARR_DELAY')]
   
   assemblerInputs = indexOutputCols + numericCols
+  print(assemblerInputs);
   vecAssembler = VectorAssembler(inputCols=assemblerInputs,
                                 outputCol="features")
 
@@ -166,7 +172,7 @@ def train_model(df_orig, maxDepth, numTrees, stringIndexer, vecAssembler):
 
 depth_trees = [(5, 100), (5, 90), (5, 80), (5, 70), (6, 90), (6, 80), (6, 70), (6, 60)]
 stringIndexer, vecAssembler = load_assemblers(df)
-for depth, trees in depth_trees:
+for depth, trees in depth_trees[0:1]:
   train_model(df, depth, trees, stringIndexer, vecAssembler)  
 
 # COMMAND ----------

@@ -122,9 +122,8 @@ corr["ARR_DELAY"].sort_values()
 
 # Join Flight and Weather data for NYC and JFK based on year, month, day and hour.
 flight_and_weather_DF = spark.sql("""
-  SELECT * 
-  FROM dscc202_group02_db.bronze_air_traffic_cleaned_v3 F, dscc202_group02_db.bronze_weather_v1 W
-WHERE F.ORIGIN = "JFK" AND YEAR(F.SCHEDULED_DEP_TIME) = YEAR(W.time) AND MONTH(F.SCHEDULED_DEP_TIME) = MONTH(W.time) AND DAY(F.SCHEDULED_DEP_TIME) = DAY(W.time) AND HOUR(F.SCHEDULED_DEP_TIME) = HOUR(W.time)
+  SELECT *
+  FROM dscc202_group02_db.bronze_airport_weather_join_imputed
 """)
 
 # COMMAND ----------
@@ -134,4 +133,20 @@ display(flight_and_weather_DF)
 # COMMAND ----------
 
 corr = plot_correlation(flight_and_weather_DF)
-corr["DEP_DELAY"].sort_values()
+corr["ARR_DELAY"].sort_values()
+
+# COMMAND ----------
+
+from pyspark.sql.functions import *
+dayDF = (flight_and_weather_DF.withColumn("day", date_trunc('day', "SCHEDULED_DEP_TIME"))
+         .withColumn("gone", col("orgin_tot_precip_mm").isNull())
+        ).groupby("day").agg(count("gone")).orderBy("day")
+display(dayDF)
+
+
+# COMMAND ----------
+
+display(dayDF.agg(min("day"), max("day")))
+
+# COMMAND ----------
+

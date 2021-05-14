@@ -65,6 +65,7 @@ parsedWeatherDF = parsedWeatherDF.drop(*priorColumns)
 
 display(parsedWeatherDF)
 
+
 # COMMAND ----------
 
 # Ryan - limit distances of weather stations from interested airports.
@@ -114,27 +115,31 @@ display(localWeatherDF)
 
 # COMMAND ----------
 
-filteredLocations = localWeatherDF.select("LATITUDE", "LONGITUDE").distinct()
+print(localWeatherDF.count())
 
 # COMMAND ----------
 
-print(filteredLocations.count())
-display(filteredLocations)
+display(localWeatherDF.select([count(when(isnull(c), c)).alias(c) for c in localWeatherDF.columns]))
+
+# COMMAND ----------
+
+display(localWeatherDF.filter("precip_mm is NULL").select(countDistinct("close_airport")))
 
 # COMMAND ----------
 
 aggDF = localWeatherDF.groupby(["close_airport", "time"]).agg(mean('temp_f').alias('avg_temp_f'),
-       sum('precip_mm').alias('tot_precip_mm'),
        mean('wnd_mps').alias('avg_wnd_mps'),
        mean('vis_m').alias('avg_vis_m'),
        mean('slp_hpa').alias('avg_slp_hpa'),
        mean('dew_pt_f').alias('avg_dewpt_f')
        ).orderBy("time")
 display(aggDF)
+#sum('precip_mm').alias('tot_precip_mm'),
 
 # COMMAND ----------
 
-display(weatherDF.filter(weatherDF.NAME == "DAL FTW WSCMO AIRPORT, TX US"))
+display(aggDF.select([count(when(isnull(c), c)).alias(c) for c in aggDF.columns]))
+print(aggDF.count())
 
 # COMMAND ----------
 
@@ -158,7 +163,10 @@ from pyspark.sql.functions import *
 aggDF = spark.sql("SELECT * FROM bronze_weather_data_ingest_agg")
 
 
-airportDF = spark.sql("SELECT * FROM bronze_air_traffic_cleaned_v3")
+airportDF = spark.sql("""SELECT * FROM bronze_air_traffic_cleaned_v3 
+                         WHERE ORIGIN IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
+                         AND DEST IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
+                       """)
 
 airportDF = (airportDF.withColumn("SCHEDULED_DEP_TIME", date_trunc('hour', "SCHEDULED_DEP_TIME"))
              .withColumn("SCHEDULED_ARR_TIME", date_trunc('hour', "SCHEDULED_ARR_TIME")))
@@ -174,7 +182,6 @@ display(airportDF)
 
 originAgg = aggDF.select(col("close_airport"),
                          col("time"),
-                         col("tot_precip_mm").alias("orgin_tot_precip_mm"),
                          col("avg_wnd_mps").alias("orgin_avg_wnd_mps"),
                          col("avg_vis_m").alias("orgin_avg_vis_m"),
                          col("avg_slp_hpa").alias("orgin_avg_slp_hpa"),
@@ -182,7 +189,6 @@ originAgg = aggDF.select(col("close_airport"),
                         )
 destAgg = aggDF.select(col("close_airport"),
                          col("time"),
-                         col("tot_precip_mm").alias("dest_tot_precip_mm"),
                          col("avg_wnd_mps").alias("dest_avg_wnd_mps"),
                          col("avg_vis_m").alias("dest_avg_vis_m"),
                          col("avg_slp_hpa").alias("dest_avg_slp_hpa"),
@@ -205,12 +211,28 @@ display(fullJoined)
 
 # COMMAND ----------
 
-from pyspark.sql.utils import AnalysisException
-try:
-  fullJoined.write.saveAsTable("bronze_airport_weather_join")
-except AnalysisException:
-  print("Table already exists")
+display(fullJoined.select(countDistinct("ORIGIN")))
+display(fullJoined.select(countDistinct("DEST")))
+print(fullJoined.count())
 
+# COMMAND ----------
+
+display(fullJoined.select([count(when(isnull(c), c)).alias(c) for c in fullJoined.columns]))
+
+# COMMAND ----------
+
+display(fullJoined.filter("orgin_avg_vis_m is NULL").orderBy("SCHEDULED_DEP_TIME"))
+
+# COMMAND ----------
+
+from pyspark.sql.utils import AnalysisException
+# overwrite table.
+try:
+  fullJoined.write.mode("overwrite").saveAsTable("bronze_airport_weather_join")
+except:
+  print("Dropping and updating table.")
+  spark.sql("DROP TABLE IF EXISTS bronze_airport_weather_join")
+  airportsOfInterestDF.write.mode("overwrite").saveAsTable("bronze_airport_weather_join")
 
 
 
