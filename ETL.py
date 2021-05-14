@@ -41,6 +41,13 @@ printShape(df)
 
 # COMMAND ----------
 
+df.write.format("delta").save(BASE_DELTA_PATH+"/airport_source/")
+
+streamingdf = readstream(BASE_DELTA_PATH+"/airport_source/")
+
+
+# COMMAND ----------
+
 # Print the SQL query for the next code cell
 print("SELECT")
 for c in df.columns:
@@ -430,12 +437,16 @@ weather_airports = weather_airports.withColumn("MONTH_OF_YEAR", month("SCHEDULED
 
 orgin_impute = impute(weather_airports, ["ORIGIN", "MONTH_OF_YEAR"], orgin_imputation_targets)
 full_impute = impute(orgin_impute, ["DEST", "MONTH_OF_YEAR"], dest_imputation_targets)
+full_impute = full_impute.drop("MONTH_OF_YEAR")
 display(full_impute)
 display(full_impute.select([count(when(isnull(c), c)).alias(c) for c in full_impute.columns]))
 
 # COMMAND ----------
 
-full_impute = full_impute.drop("MONTH_OF_YEAR")
+
+
+# COMMAND ----------
+
 from pyspark.sql.utils import AnalysisException
 # overwrite table.
 try:
