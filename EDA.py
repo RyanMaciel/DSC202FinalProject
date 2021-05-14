@@ -150,3 +150,4 @@ display(dayDF.agg(min("day"), max("day")))
 
 # COMMAND ----------
 
+dbutils.notebook.exit("Success")
