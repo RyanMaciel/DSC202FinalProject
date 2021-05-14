@@ -21,10 +21,13 @@
 
 # COMMAND ----------
 
-airport_code = "SFO"
-training_start_date = "2018-01-01"
-training_end_date = "2018-02-01"
-inference_date = "2019-03-16"
+from datetime import datetime as dt
+
+airport_code = str(dbutils.widgets.get('Airport Code'))
+training_start_date = str(dbutils.widgets.get('Training Start Date'))
+training_end_date = str(dbutils.widgets.get('Training End Date'))
+inference_date = str(dbutils.widgets.get('Inference Date'))
+
 
 # COMMAND ----------
 
