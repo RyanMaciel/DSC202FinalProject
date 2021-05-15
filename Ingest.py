@@ -4,16 +4,9 @@
 
 # COMMAND ----------
 
-weatherDF = spark.sql("SELECT * FROM bronze_weather")
-
-# COMMAND ----------
-
-countDF = spark.sql("SELECT DISTINCT STATION FROM bronze_weather")
-display(countDF)
-
-# COMMAND ----------
-
-print(countDF.count())
+spark.read.format('delta').table("dscc202_db.bronze_air_traffic").createOrReplaceTempView("streaming_airport_temp_view")
+spark.read.format('delta').table("dscc202_db.bronze_weather").createOrReplaceTempView("streaming_weather_temp_view")
+weatherDF = spark.sql("SELECT * FROM streaming_weather_temp_view")
 
 # COMMAND ----------
 
@@ -143,16 +136,16 @@ print(aggDF.count())
 
 # COMMAND ----------
 
-# MAGIC %sql
-# MAGIC USE dscc202_group02_db
+# %sql
+# USE dscc202_group02_db
 
 # COMMAND ----------
 
-from pyspark.sql.utils import AnalysisException
-try:
-  aggDF.write.saveAsTable("bronze_weather_data_ingest_agg")
-except AnalysisException:
-  print("Table already exists")
+# from pyspark.sql.utils import AnalysisException
+# try:
+#   aggDF.write.saveAsTable("bronze_weather_data_ingest_agg")
+# except AnalysisException:
+#   print("Table already exists")
 
 
 
@@ -160,10 +153,10 @@ except AnalysisException:
 # COMMAND ----------
 
 from pyspark.sql.functions import *
-aggDF = spark.sql("SELECT * FROM bronze_weather_data_ingest_agg")
+# aggDF = spark.sql("SELECT * FROM bronze_weather_data_ingest_agg")
 
 
-airportDF = spark.sql("""SELECT * FROM bronze_air_traffic_cleaned_v3 
+airportDF = spark.sql("""SELECT * FROM streaming_airport_temp_view 
                          WHERE ORIGIN IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
                          AND DEST IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
                        """)

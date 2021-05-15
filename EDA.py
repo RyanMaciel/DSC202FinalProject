@@ -116,5 +116,7 @@ df = spark.sql("SELECT * FROM dscc202_group02_db.silver_airport_weather_join_imp
 
 # COMMAND ----------
 
+
 corr = plot_correlation(df)
 corr["ARR_DELAY"].sort_values()
+dbutils.notebook.exit("Success")
