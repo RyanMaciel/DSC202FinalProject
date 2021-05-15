@@ -55,14 +55,14 @@ def plot_correlation(df):
 
 # MAGIC %sql
 # MAGIC SELECT *
-# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned_v3
+# MAGIC FROM dscc202_group02_db.silver_airport_weather_join_imputed
 # MAGIC LIMIT 10
 
 # COMMAND ----------
 
 # MAGIC %sql
 # MAGIC SELECT COUNT(*) AS FREQUENCY, ARR_DELAY
-# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned_v3
+# MAGIC FROM dscc202_group02_db.silver_airport_weather_join_imputed
 # MAGIC GROUP BY ARR_DELAY
 # MAGIC SORT BY ARR_DELAY
 
@@ -78,7 +78,7 @@ def plot_correlation(df):
 
 # MAGIC %sql
 # MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, DAY_OF_WEEK
-# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned_v3
+# MAGIC FROM dscc202_group02_db.silver_airport_weather_join_imputed
 # MAGIC GROUP BY DAY_OF_WEEK
 # MAGIC SORT BY DAY_OF_WEEK
 
@@ -88,7 +88,7 @@ def plot_correlation(df):
 # MAGIC -- https://dwgeek.com/spark-sql-date-and-timestamp-functions-and-examples.html/ -> to convert from TIMESTAMP to MONTH
 # MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, month(
 # MAGIC SCHEDULED_DEP_TIME) AS MONTH
-# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned_v3
+# MAGIC FROM dscc202_group02_db.silver_airport_weather_join_imputed
 # MAGIC GROUP BY MONTH
 # MAGIC SORT BY MONTH
 
@@ -96,8 +96,9 @@ def plot_correlation(df):
 
 # MAGIC %sql
 # MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, ORIGIN
-# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned_v3  
+# MAGIC FROM dscc202_group02_db.silver_airport_weather_join_imputed  
 # MAGIC WHERE ORIGIN IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
+# MAGIC AND DEST IN ("JFK","SEA","BOS","ATL","LAX","SFO","DEN","DFW","ORD","CVG","CLT","DCA","IAH")
 # MAGIC GROUP BY ORIGIN
 # MAGIC SORT BY ORIGIN
 
@@ -105,49 +106,17 @@ def plot_correlation(df):
 
 # MAGIC %sql
 # MAGIC SELECT AVG(ARR_DELAY) AS avg_arr_delay, AVG(DEP_DELAY) AS avg_dep_delay, dayofmonth(SCHEDULED_DEP_TIME) AS DAY_OF_MONTH
-# MAGIC FROM dscc202_group02_db.bronze_air_traffic_cleaned_v3
+# MAGIC FROM dscc202_group02_db.silver_airport_weather_join_imputed
 # MAGIC GROUP BY DAY_OF_MONTH
 # MAGIC SORT BY DAY_OF_MONTH
 
 # COMMAND ----------
 
-flightDF = spark.sql("SELECT * FROM dscc202_group02_db.bronze_air_traffic_cleaned_v3")
+df = spark.sql("SELECT * FROM dscc202_group02_db.silver_airport_weather_join_imputed")
 
 # COMMAND ----------
 
-corr = plot_correlation(flightDF)
+
+corr = plot_correlation(df)
 corr["ARR_DELAY"].sort_values()
-
-# COMMAND ----------
-
-# Join Flight and Weather data for NYC and JFK based on year, month, day and hour.
-flight_and_weather_DF = spark.sql("""
-  SELECT *
-  FROM dscc202_group02_db.bronze_airport_weather_join_imputed
-""")
-
-# COMMAND ----------
-
-display(flight_and_weather_DF)
-
-# COMMAND ----------
-
-corr = plot_correlation(flight_and_weather_DF)
-corr["ARR_DELAY"].sort_values()
-
-# COMMAND ----------
-
-from pyspark.sql.functions import *
-dayDF = (flight_and_weather_DF.withColumn("day", date_trunc('day', "SCHEDULED_DEP_TIME"))
-         .withColumn("gone", col("orgin_tot_precip_mm").isNull())
-        ).groupby("day").agg(count("gone")).orderBy("day")
-display(dayDF)
-
-
-# COMMAND ----------
-
-display(dayDF.agg(min("day"), max("day")))
-
-# COMMAND ----------
-
 dbutils.notebook.exit("Success")
