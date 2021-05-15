@@ -15,15 +15,15 @@ to the production version can be done in Model Monitoring via data visualization
 	* Streaming construct should be employed so any data added to Bronze data sources will be automatically ingested by your application by running the ELT code.
 	* ELT code should be idempotent.  No adverse effects for multiple runs.
 2. Exploratory Data Analysis (EDA)
-  * Findings and filtering of Bronze/Silver data.
+	* Findings and filtering of Bronze/Silver data.
 3. MLops Lifecycle
-  * Use the training start and end date widgets to specify the date range to be used in the training and test of a given model.
-  * Training model(s) at scale to estimate the arrival or departure time of a flight before it leaves the gate.
-  * Register training and test data versions as well as parameters and metrics using mlflow
-  * Including model signature in the published model
-  * Hyperparameter tuning at scale with mlflow comparison of performance
-  * Orchestrating workflow staging to production using clear test methods
-  * Parameterize the date range that a given model is covering in its training set.
+	* Use the training start and end date widgets to specify the date range to be used in the training and test of a given model.
+	* Training model(s) at scale to estimate the arrival or departure time of a flight before it leaves the gate.
+	* Register training and test data versions as well as parameters and metrics using mlflow
+	* Including model signature in the published model
+	* Hyperparameter tuning at scale with mlflow comparison of performance
+	* Orchestrating workflow staging to production using clear test methods
+	* Parameterize the date range that a given model is covering in its training set.
 4. Model Monitoring
 	* Use the training and inference date widgets to highlight model performance on unseen data
 	* Specify your criteria for retraining and promotion to production.
