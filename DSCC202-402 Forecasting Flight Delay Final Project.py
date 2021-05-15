@@ -201,7 +201,7 @@ else:
 
 #"00.Airport_Code":airport_code,"01.training_start_date":training_start_date,"02.training_end_date":training_end_date,"03.inference_date":inference_date
 # run link to the EDA notebook
-status = dbutils.notebook.run("./EDA", 3600, {})
+status = dbutils.notebook.run("EDA", 3600)
 if status == "Success":
    print("Passed")
 else:
